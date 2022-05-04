@@ -30,7 +30,7 @@ attributes
 --
 class Conduit
 attributes
-    Road segment {I, UR7}
+    Road segment {I, R7}
     Role : Conduit Role {I}
 --
 class Country
@@ -151,7 +151,7 @@ attributes
 class Lateral Lane Boundary
 attributes
     ID {I}
-    Road segment {I, UR28}
+    Road segment {I, R28}
     Location : Distance
 --
 class Left Road Edge
@@ -199,7 +199,7 @@ attributes
     Inside division {I,R11}
     Outside division {I,R11}
     Road segment {I,R11}
-    Restriction {Rxx}
+    Restriction {R43}
 --
 class Restriction Specification <import:TBD>
 attributes
@@ -221,8 +221,8 @@ attributes
 --
 class Road Edge
 attributes
-    Road segment {I, UR15, R40}
-    Side {I} : Left Right
+    Road segment {I, R15, R40}
+    Side : Left Right {I}
     Lane division {R40}
 --
 class Road Map Specification, RMAP_SPEC

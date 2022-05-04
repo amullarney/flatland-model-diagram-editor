@@ -1,0 +1,23 @@
+// Model Markdown Arpeggio Clean Peg Grammar
+
+// Parse a single attribute description line
+
+sp = " " // Single space
+lbrace = "{" // Left brace
+rbrace = "}" // Right brace
+comma = ',' sp* // Comma separator
+colon = ' : '
+delim = r'[ _]' // Delimiter used inside of names
+ident = r'I[1-9]?[0-9]*' // attribute serves for identification
+rnum = r'U?O?R[1-9][0-9]*' // Relationship number
+lword = r'[a-z][a-z]*' // Lower case only word (used in relationship phrase)
+iword = r'[A-Z][A-Za-z0-9]*' // Initial cap word (used in Class and Subsystem names)
+idents = ident (comma ident)* comma? //
+referentials = rnum (comma rnum)*
+attrname = iword (delim lword)* // Only first word has initial cap
+attrtype =  colon sp* icaps_name //
+attrinfo = sp+ lbrace idents? sp* referentials? rbrace //
+attr_line = attrname attrtype? attrinfo?  // attribute description line
+icaps_name = iword (delim iword)*  // A name using initial caps only
+
+attrdef = attr_line EOF

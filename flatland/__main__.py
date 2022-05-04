@@ -12,6 +12,7 @@ from flatland.xuml.xuml_classdiagram import XumlClassDiagram
 from flatland.xuml.xuml_statemachine_diagram import XumlStateMachineDiagram
 from flatland.configuration.config import Config
 from flatland import version
+from flatland.masl.maslout import MaslOut
 
 _logpath = Path("flatland.log")
 
@@ -57,6 +58,10 @@ def parse(cl_input):
                         help='Rebuild the flatland database. Necessary only if corrupted.')
     parser.add_argument('-COLORS', '--colors', action='store_true',
                         help='Show the list of background color names')
+    parser.add_argument('-MASL', '--masl', action='store_true',
+                        help='Create file of MASL class and relationship definitions')
+    parser.add_argument('-x', '--translate', action='store', default='masl.mod',
+                        help='Name of file for MASL translation')
     return parser.parse_args(cl_input)
 
 
@@ -123,7 +128,7 @@ def main():
             logger.info("Copying doc directory to users local directory")
             shutil.copytree(docs_path, local_docs_path)
 
-    if args.model and not args.layout:
+    if args.model and not args.layout and not args.masl:
         logger.error("A layout file must be specified for your model.")
         sys.exit(1)
 
@@ -164,6 +169,14 @@ def main():
                 nodes_only=args.nodes_only,
                 no_color=args.no_color,
             )
+
+    if args.model and args.masl:
+        model_path = Path(args.model)
+        masl_path = Path(args.translate)
+        success = MaslOut(
+            xuml_model_path=model_path,
+            masl_file_path=masl_path,
+        )
 
     logger.info("No problemo")  # We didn't die on an exception, basically
 
