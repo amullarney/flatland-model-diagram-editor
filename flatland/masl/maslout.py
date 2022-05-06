@@ -17,12 +17,9 @@ from arpeggio import visit_parse_tree, NoMatch
 from collections import namedtuple
 from flatland.masl.attr_visitor import AttrVisitor
 
-Attrtuple = namedtuple('attrline', 'attrdef')
-
 class modelclass:
-    def __init__(self, classname, attrblock, keyletter):
+    def __init__(self, classname, keyletter):
         self.classname = classname
-        self.attrblock = attrblock # unparsed attributes text
         self.keyletter = keyletter
         self.attrlist = []
         self.identslist = []
@@ -33,7 +30,14 @@ class attribute:
         self.type = attrtype
         self.is_preferred = False
         self.references = []
-         
+        self.resolved = []
+        
+class reference:
+    def __init__(self, rel, isbinary, rclass):
+        self.rel = rel
+        self.isbinary = isbinary
+        self.rclass = rclass
+              
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass, aclass):
         self.rnum = rnum
@@ -46,6 +50,12 @@ class binassoc:
         self.pmult = pmult
         self.pclass = pclass
         self.aclass = aclass
+        
+class superassoc:
+    def __init__(self, rnum, superclass):
+        self.rnum = rnum
+        self.superclass = superclass
+        self.subclasslist = []
             
 class attr_parser:
     def __init__(self, grammar_file_name, root_rule_name):
@@ -92,8 +102,6 @@ class MaslOut:
         domain = self.subsys.name['subsys_name']
         print("Generating MASL domain definitions for " + domain)
         path = domain.replace(" ","") +".mod"
-        if not self.masl_file_path == "":
-            path = self.masl_file_path
         text_file = open(path, "w")
         n = text_file.write("domain " + domain + " is\n")
 
@@ -106,11 +114,11 @@ class MaslOut:
             # There is an optional keyletter (class name abbreviation) displayed as {keyletter}
             # after the class name
             keyletter = str(thisclass.get('keyletter'))
-            if not keyletter:
+            if keyletter == "None":
                 keyletter = cname
 
             classattrs = thisclass['attributes']
-            aclass = modelclass(cname, classattrs, keyletter )
+            aclass = modelclass(cname, keyletter )
             model_class_list.append(aclass)
             while not classattrs == []:
                 attrline = classattrs[0]
@@ -154,24 +162,13 @@ class MaslOut:
                         thisattr.references.append(ref)
 
                 classattrs.pop(0)  # done with this attribute line
-        for c in model_class_list:
-            print(" Defined class: " + c.classname)
-            for attr in c.attrlist:
-                if attr.name == "ID":
-                    print("found ID: " + attr.name + " " + attr.type)
-                    print(attr.references)
-                    if attr.type == "undef" and attr.references == []:
-                        attr.type = "assigned_id"
-                        print("update ID type for " + attr.name)
-                print(attr.name + " " + attr.type)
-            print(" end class")
-        print("all classes done")
-        print("    MASL relationships - written to file")
-        
+
         # Get all association data - this will be needed to type referential attributes
         # Create a set of association data classes for searching...
 
         bin_rel_list = []
+        sup_rel_list = []
+        
         for r in self.subsys.rels:  # r is the model data without any layout info
             #print(r)
             rnum = r['rnum']
@@ -242,21 +239,59 @@ class MaslOut:
                 s = r['superclass']
                 cn = s.replace(" ","")
                 n = text_file.write(cn + " is_a (")
+                for c in model_class_list:
+                    if c.classname == cn:
+                        break
+                saclass = superassoc(rnum, c)
+                sup_rel_list.append(saclass)
                 subclasses = r['subclasses']
                 sep = ""
                 for s in subclasses:
                     cn = s.replace(" ","")
                     n = text_file.write(sep + cn)
                     sep = ", "
+                    for c in model_class_list:
+                        if c.classname == cn:
+                            saclass.subclasslist.append(c)
+                            break
                 n = text_file.write(");\n");
                 
 
-        # Output all of the classes
-        self.logger.info("Outputting MASL classes")
+        for c in model_class_list:
+            print(" Defined class: " + c.classname)
+            for attr in c.attrlist:
+                if attr.references == []:
+                    if attr.name.endswith("ID") and attr.type == "undef":
+                        attr.type = "assigned_id"
+                        print("update ID type for " + attr.name)
+                else:
+                    for ref in attr.references:
+                        print("resolving: " + attr.name)
+                        print(ref)
+                        resolved = False
+                        res = ""
+                        for r in bin_rel_list:
+                            if ref == r.rnum:
+                                res = reference(r, True, r.pclass)
+                                resolved = True;
+                                break
+                        if not resolved:
+                            for r in sup_rel_list:
+                                if ref == r.rnum:
+                                    res = reference(r, False, r.superclass)
+                        if res:
+                            attr.resolved.append(res)
+                            for a in res.rclass.attrlist:
+                                if a.name == attr.name:
+                                    print(a.name + " is matched in " + res.rclass.classname)
+                                    break
+                    print("all refs scanned for: " + attr.name + " : " + attr.type)
+            print(" end class\n")
+        print("all classes done")
+        
 
         """Output class definitions"""
 
-        print("    MASL class definitions - to console, for now")
         print(" ")
         
         for c in model_class_list:
@@ -266,33 +301,37 @@ class MaslOut:
             text_file.write("  object "+ cname + " is\n")
             
             for a in c.attrlist:
-                print("    " + a.name)
-                text_file.write(" " + a.name)
+                text_file.write("    " + a.name)
+                if a.resolved:  # a referential
+                    for res in a.resolved:
+                        referred = res.rclass
+                        phrase = " is_a "
+                        if res.isbinary:
+                            phrase = res.rel.pphrase
+                        for ra in referred.attrlist:
+                            if ra.name == a.name:
+                               print("    " + a.name + " : ref ( " + ref + "." + phrase  + "." + referred.classname + "." + ra.name + " ) " + ra.type)
+                               n = text_file.write(" referential : ( " + ref + "." + phrase  + "." + referred.classname + "." + ra.name + " ) " + ra.type)
+                else:
+                    print("    " + a.name + " : " + a.type)
+                    
                 text_file.write(";\n")
-                if a.references:
-                    for ref in a.references:
-                        for r in bin_rel_list:
-                            if r.rnum == ref:
-                                referred = r.pclass
-                                for ra in referred.attrlist:
-                                    if ra.name == a.name:
-                                    
-                                       print(" referential ( " + ref + "." + r.pphrase  + "." + referred.classname + "." + ra.name + " ) " + ra.type + ";")
 
             if not c.identslist == []:
+                line = "  identifier is "
                 for l in c.identslist:
-                    print("identifier is ( ")
                     sep = ''
                     text_file.write("    identifier is ( ")
                     for a in l[1]:
-                        print(a + ",")
+                        line = line + sep + a
                         text_file.write(sep + a)
                         sep = ", "
                     text_file.write(" );\n")
+                    print(line)
             print("  end object;")
             text_file.write("  end object;\n")
             keyletter = c.keyletter
-            print("pragma key letter ( ",'"' + keyletter + '"'," );")
+            print("pragma key letter ( ",'"' + keyletter + '"'," );\n")
             n = text_file.write("pragma key_letter ( "'"' + keyletter + '"'" );\n\n")
 
         text_file.write("end domain;\n")
