@@ -52,7 +52,10 @@ class AttrVisitor(PTNodeVisitor):
         return {"type": name}
 
     def visit_attrinfo(self, node, children):
-        return {"info": children}
+        info = {}
+        for child in children:
+            info.update(child)
+        return {"info": info}
 
     def visit_idents(self, node, children):
         return {"idents": children}
@@ -66,6 +69,5 @@ class AttrVisitor(PTNodeVisitor):
     def visit_attr_line(self, node, children):
         """The attribute description line"""
         return children
-
 
 
