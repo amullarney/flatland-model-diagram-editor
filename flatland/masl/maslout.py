@@ -22,7 +22,7 @@ class modelclass:
         self.classname = classname
         self.keyletter = keyletter
         self.attrlist = []
-        self.identslist = []
+        self.identifiers = []
 
 class attribute:
     def __init__(self, attrname, attrtype):
@@ -30,13 +30,20 @@ class attribute:
         self.type = attrtype
         self.is_preferred = False
         self.references = []
-        self.resolved = []
         
-class reference:
-    def __init__(self, rel, isbinary, rclass):
-        self.rel = rel
-        self.isbinary = isbinary
-        self.rclass = rclass
+class identifier:
+    def __init__(self, identnum):
+        self.identnum = identnum
+        self.attrs = []
+
+class attref:
+    def __init__(self, ref):
+        self.ref = ref
+        self.rel = 0
+        self.isbinary = 0
+        self.rclass = 0
+        self.attr = 0
+        self.resolved = False
               
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass, aclass):
@@ -106,20 +113,20 @@ class MaslOut:
         n = text_file.write("domain " + domain + " is\n")
 
         model_class_list = []        
-        for thisclass in self.subsys.classes:
+        for mclass in self.subsys.classes:
             # Get the class name from the model; remove all white space
-            txt = thisclass['name']
+            txt = mclass['name']
             cname = txt.replace(" ","")
 
             # There is an optional keyletter (class name abbreviation) displayed as {keyletter}
             # after the class name
-            keyletter = str(thisclass.get('keyletter'))
+            keyletter = str(mclass.get('keyletter'))
             if keyletter == "None":
                 keyletter = cname
 
-            classattrs = thisclass['attributes']
-            aclass = modelclass(cname, keyletter )
-            model_class_list.append(aclass)
+            classattrs = mclass['attributes']
+            thisclass = modelclass(cname, keyletter )
+            model_class_list.append(thisclass)
             while not classattrs == []:
                 attrline = classattrs[0]
                 # Now, parse this line for details
@@ -128,38 +135,34 @@ class MaslOut:
                 aline = {}
                 for x in result:
                     aline.update(x)
-                attrtype = "integer"  # default.. for now
                 attrname = aline['name']
                 attrtype = aline.get('type')
                 if not attrtype:
                     attrtype = "undef"  # default.. for now
                 
                 thisattr = attribute(attrname, attrtype)
-                aclass.attrlist.append(thisattr)
+                thisclass.attrlist.append(thisattr)
                 
                 info = aline.get('info')
                 if info:
                     idents = info.get('idents')
                     refs = info.get('refs')
   
-                if idents:
-                    for i in idents:
-                        if i == "I":
-                            thisattr.preferred = True
-                        else:
-                            added = False
-                            for l in aclass.identslist:
-                                if l[0] == i:
-                                    l[1].append(attrname)
-                                    added = True
-                            if not added:
-                                alist = [attrname]
-                                ilist = [i, alist]
-                                aclass.identslist.append(ilist)
-
-                if refs:
-                    for ref in refs:
-                        thisattr.references.append(ref)
+                    if idents:
+                        for i in idents:
+                            if i == "I":
+                                thisattr.preferred = True
+                            found = False
+                            for ident in thisclass.identifiers:
+                                if ident.identnum == i:
+                                    found = True
+                            if not found:
+                                ident = identifier(i)
+                            ident.attrs.append(thisattr)
+                    if refs:
+                        for ref in refs:
+                            aref = attref(ref)
+                            thisattr.references.append(aref)
 
                 classattrs.pop(0)  # done with this attribute line
 
@@ -231,7 +234,7 @@ class MaslOut:
                         tclass = c
                     if c.classname == pc:
                         pclass = c
-                baclass = binassoc(rnum, tclass, tcond, tmult, tc, pp, pcond, pmult, pclass, aclass)
+                baclass = binassoc(rnum, tclass, tcond, tmult, tclass, pp, pcond, pmult, pclass, aclass)
                 bin_rel_list.append(baclass)
 
 
@@ -261,29 +264,41 @@ class MaslOut:
             print(" Defined class: " + c.classname)
             for attr in c.attrlist:
                 if attr.references == []:
+                    print("non-referential: " + attr.name)
                     if attr.name.endswith("ID") and attr.type == "undef":
                         attr.type = "assigned_id"
                         print("update ID type for " + attr.name)
                 else:
-                    for ref in attr.references:
-                        print("resolving: " + attr.name)
-                        print(ref)
-                        resolved = False
-                        res = ""
+                    print("resolving: " + attr.name)
+                    for reference in attr.references:
+                        print(reference.ref)
+                        classresolved = False
                         for r in bin_rel_list:
-                            if ref == r.rnum:
-                                res = reference(r, True, r.pclass)
-                                resolved = True;
+                            if reference.ref == r.rnum:
+                                reference.rel = r
+                                xclass = r.pclass
+                                if xclass.classname == c.classname:
+                                    print("oops! - T&P mixed " + r.tclass.classname)
+                                    xclass = r.tclass
+                                reference.rclass = xclass
+                                classresolved = True;
                                 break
-                        if not resolved:
+                        if not classresolved:
                             for r in sup_rel_list:
-                                if ref == r.rnum:
-                                    res = reference(r, False, r.superclass)
-                        if res:
-                            attr.resolved.append(res)
-                            for a in res.rclass.attrlist:
-                                if a.name == attr.name:
-                                    print(a.name + " is matched in " + res.rclass.classname)
+                                if reference.ref == r.rnum:
+                                    reference.rel = r
+                                    if r.superclass.classname == c.classname:
+                                        print("oops! - subsuper crossed up")
+                                    reference.rclass = r.superclass
+                                    classresolved = True
+                        if classresolved:
+                            print("resolving to class: " + reference.rclass.classname)
+                            for refattr in reference.rclass.attrlist:
+                                if refattr.name == attr.name:
+                                    print(attr.name + " is matched in " + reference.rclass.classname)
+                                    reference.attr = refattr
+                                    if refattr.references:
+                                        print("this reference chains")
                                     break
                     print("all refs scanned for: " + attr.name + " : " + attr.type)
             print(" end class\n")
@@ -302,30 +317,50 @@ class MaslOut:
             
             for a in c.attrlist:
                 text_file.write("    " + a.name)
-                if a.resolved:  # a referential
-                    for res in a.resolved:
+                if a.references:  # a referential
+                    for res in a.references:
                         referred = res.rclass
-                        phrase = " is_a "
+                        attname = ""
+                        atttype = "unk"
+                        ra = res.attr
+                        if ra:
+                            attname = ra.name
+                            atttype = ra.type
+                        phrase = ""
+                        classname = ""
+                        rnum = "UOxx"
                         if res.isbinary:
-                            phrase = res.rel.pphrase
-                        for ra in referred.attrlist:
-                            if ra.name == a.name:
-                               print("    " + a.name + " : ref ( " + ref + "." + phrase  + "." + referred.classname + "." + ra.name + " ) " + ra.type)
-                               n = text_file.write(" referential : ( " + ref + "." + phrase  + "." + referred.classname + "." + ra.name + " ) " + ra.type)
+                            phrase = "." + res.rel.pphrase
+                            classname = referred.classname + "."
+                        else:
+                            if res.rel:
+                                rnum = res.rel.rnum
+                        print("    " + a.name + " : ref ( " + rnum + phrase  + "." + classname + attname + " ) " + atttype)
+                        n = text_file.write(" referential : ( " + rnum + phrase  + "." + classname + attname + " ) " + atttype)
                 else:
                     print("    " + a.name + " : " + a.type)
                     
                 text_file.write(";\n")
 
-            if not c.identslist == []:
-                line = "  identifier is "
-                for l in c.identslist:
+            if not c.identifiers == []:
+                for l in c.identifiers:
                     sep = ''
+                    line = "  identifier is "
                     text_file.write("    identifier is ( ")
                     for a in l[1]:
                         line = line + sep + a
                         text_file.write(sep + a)
                         sep = ", "
+                    text_file.write(" );\n")
+                    print(line)
+            print("  end object;")
+            text_file.write("  end object;\n")
+            keyletter = c.keyletter
+            print("pragma key letter ( ",'"' + keyletter + '"'," );\n")
+            n = text_file.write("pragma key_letter ( "'"' + keyletter + '"'" );\n\n")
+
+        text_file.write("end domain;\n")
+        text_file.close()              sep = ", "
                     text_file.write(" );\n")
                     print(line)
             print("  end object;")
