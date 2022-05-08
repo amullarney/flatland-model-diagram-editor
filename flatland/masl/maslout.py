@@ -23,20 +23,21 @@ class modelclass:
         self.keyletter = keyletter
         self.attrlist = []
         self.identifiers = []
+        self.identifiers.append(identifier("I"))
 
 class attribute:
     def __init__(self, attrname, attrtype):
         self.name = attrname
         self.type = attrtype
         self.is_preferred = False
-        self.references = []
+        self.references = []  # info about relationships formalized using this attribute
         
 class identifier:
     def __init__(self, identnum):
         self.identnum = identnum
         self.attrs = []
 
-class attref:
+class attref:                 # a resolvable link in a formalizing referential chain
     def __init__(self, ref):
         self.ref = ref
         self.rel = 0
@@ -125,8 +126,9 @@ class MaslOut:
                 keyletter = cname
 
             classattrs = mclass['attributes']
-            thisclass = modelclass(cname, keyletter )
+            thisclass = modelclass(cname, keyletter)
             model_class_list.append(thisclass)
+            print("attribute info for : " + thisclass.classname)
             while not classattrs == []:
                 attrline = classattrs[0]
                 # Now, parse this line for details
@@ -145,8 +147,8 @@ class MaslOut:
                 
                 info = aline.get('info')
                 if info:
-                    idents = info.get('idents')
-                    refs = info.get('refs')
+                    idents = info.get('idents')  # identifier(s) this attribute contributes to
+                    refs = info.get('refs')      # relationship number(s) formalized
   
                     if idents:
                         for i in idents:
@@ -156,12 +158,19 @@ class MaslOut:
                             for ident in thisclass.identifiers:
                                 if ident.identnum == i:
                                     found = True
+                                    break
                             if not found:
                                 ident = identifier(i)
+                                thisclass.identifiers.append(ident)
                             ident.attrs.append(thisattr)
+                            print("add to ident: " + ident.identnum + " " + thisattr.name)
                     if refs:
                         for ref in refs:
-                            aref = attref(ref)
+                            relnum = ref
+                            if not ref[0] == "R":
+                                relnum = ref[1:]
+                            aref = attref(relnum)
+                            #print(aref.ref)
                             thisattr.references.append(aref)
 
                 classattrs.pop(0)  # done with this attribute line
@@ -174,7 +183,10 @@ class MaslOut:
         
         for r in self.subsys.rels:  # r is the model data without any layout info
             #print(r)
-            rnum = r['rnum']
+            numtxt = r['rnum']
+            rnum = numtxt
+            if not numtxt[0] == "R":
+                rnum = numtxt[1:]
             n = text_file.write("relationship " + rnum + " is ")
             if not 'superclass' in r.keys():
                 tside = r['t_side']
@@ -271,7 +283,7 @@ class MaslOut:
                 else:
                     print("resolving: " + attr.name)
                     for reference in attr.references:
-                        print(reference.ref)
+                        print(" found relation number: " + reference.ref)
                         classresolved = False
                         for r in bin_rel_list:
                             if reference.ref == r.rnum:
@@ -281,6 +293,7 @@ class MaslOut:
                                     print("oops! - T&P mixed " + r.tclass.classname)
                                     xclass = r.tclass
                                 reference.rclass = xclass
+                                reference.isbinary = True;
                                 classresolved = True;
                                 break
                         if not classresolved:
@@ -292,14 +305,24 @@ class MaslOut:
                                     reference.rclass = r.superclass
                                     classresolved = True
                         if classresolved:
-                            print("resolving to class: " + reference.rclass.classname)
-                            for refattr in reference.rclass.attrlist:
-                                if refattr.name == attr.name:
-                                    print(attr.name + " is matched in " + reference.rclass.classname)
-                                    reference.attr = refattr
-                                    if refattr.references:
-                                        print("this reference chains")
+                            print("resolved to class: " + reference.rclass.classname)
+                            for ident in reference.rclass.identifiers:
+                                for refattr in ident.attrs:
+                                    if refattr.name == attr.name:
+                                        print(attr.name + " is matched in " + reference.rclass.classname)
+                                        reference.attr = refattr
+                                        reference.resolved = True;
+                                        #if refattr.references:
+                                            #print("this reference chains")
+                                        break
+                                if reference.resolved:
                                     break
+                            if not reference.resolved:
+                                ident = reference.rclass.identifiers[0]
+                                if len(ident.attrs) == 1:
+                                    reference.attr = ident.attrs[0]
+                                    print("resolved with " + reference.attr.name + " of type " + reference.attr.type)
+                                    reference.resolved = True
                     print("all refs scanned for: " + attr.name + " : " + attr.type)
             print(" end class\n")
         print("all classes done")
@@ -316,53 +339,48 @@ class MaslOut:
             text_file.write("  object "+ cname + " is\n")
             
             for a in c.attrlist:
-                text_file.write("    " + a.name)
-                if a.references:  # a referential
-                    for res in a.references:
-                        referred = res.rclass
-                        attname = ""
-                        atttype = "unk"
-                        ra = res.attr
-                        if ra:
-                            attname = ra.name
-                            atttype = ra.type
-                        phrase = ""
-                        classname = ""
-                        rnum = "UOxx"
-                        if res.isbinary:
-                            phrase = "." + res.rel.pphrase
-                            classname = referred.classname + "."
-                        else:
-                            if res.rel:
-                                rnum = res.rel.rnum
-                        print("    " + a.name + " : ref ( " + rnum + phrase  + "." + classname + attname + " ) " + atttype)
-                        n = text_file.write(" referential : ( " + rnum + phrase  + "." + classname + attname + " ) " + atttype)
-                else:
+                atttype = ""
+                if not a.references:
                     print("    " + a.name + " : " + a.type)
-                    
-                text_file.write(";\n")
+                    text_file.write("    " + a.name + " : " + a.type + ";\n")
+                else:
+                    print("    " + a.name + " referential : ( ")
+                    text_file.write("    " + a.name + " referential : ( ")
+                    for eachref in a.references:
+                        ref = eachref
+                        while ref:
+                            print(" now looking at: " + ref.rclass.classname)
+                            referred = ref.rclass
+                            refattr = ref.attr
+                            classname = referred.classname
+                            attname = refattr.name
+                            atttype = refattr.type
+                            rel = ref.rel
+                            rum = rel.rnum
+                            phrase = ""
+                            sep = ""
+                            if ref.isbinary:
+                                phrase = "." + rel.pphrase
+                            print("   " + rnum + phrase  + "." + classname + attname + " ")
+                            n = text_file.write(rnum + phrase  + "." + classname + attname + " ")
+                            if refattr.references:
+                                ref = refattr.references[0]
+                                print(" jumping to " + ref.rclass.classname)
+                            else:
+                                break
+                        
+                    text_file.write(" ) " + atttype + ";\n")
 
-            if not c.identifiers == []:
-                for l in c.identifiers:
-                    sep = ''
-                    line = "  identifier is "
-                    text_file.write("    identifier is ( ")
-                    for a in l[1]:
-                        line = line + sep + a
-                        text_file.write(sep + a)
-                        sep = ", "
-                    text_file.write(" );\n")
-                    print(line)
-            print("  end object;")
-            text_file.write("  end object;\n")
-            keyletter = c.keyletter
-            print("pragma key letter ( ",'"' + keyletter + '"'," );\n")
-            n = text_file.write("pragma key_letter ( "'"' + keyletter + '"'" );\n\n")
-
-        text_file.write("end domain;\n")
-        text_file.close()              sep = ", "
-                    text_file.write(" );\n")
-                    print(line)
+            for ident in c.identifiers:
+                sep = ''
+                line = "  identifier is ( "
+                text_file.write("    identifier is ( ")
+                for attr in ident.attrs:
+                    line = line + sep + attr.name
+                    text_file.write(sep + attr.name)
+                    sep = ", "
+                text_file.write(" );\n")
+                print(line)
             print("  end object;")
             text_file.write("  end object;\n")
             keyletter = c.keyletter
@@ -371,3 +389,9 @@ class MaslOut:
 
         text_file.write("end domain;\n")
         text_file.close()
+
+        for c in model_class_list:
+            for attr in c.attrlist:
+                for ref in attr.references:
+                    if not ref.resolved:
+                        print(c.classname + " has unresolved " + attr.name + " ref ")
