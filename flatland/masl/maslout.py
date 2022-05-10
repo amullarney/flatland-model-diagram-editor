@@ -24,6 +24,7 @@ class modelclass:
         self.attrlist = []
         self.identifiers = []
         self.identifiers.append(identifier("I"))
+        self.is_associative = False
 
 class attribute:
     def __init__(self, attrname, attrtype):
@@ -118,6 +119,7 @@ class MaslOut:
             # Get the class name from the model; remove all white space
             txt = mclass['name']
             cname = txt.replace(" ","")
+            text_file.write("  object " + cname +";\n")
 
             # There is an optional keyletter (class name abbreviation) displayed as {keyletter}
             # after the class name
@@ -144,6 +146,7 @@ class MaslOut:
                 
                 thisattr = attribute(attrname, attrtype)
                 thisclass.attrlist.append(thisattr)
+                print("attribute: " + attrname)
                 
                 info = aline.get('info')
                 if info:
@@ -153,7 +156,7 @@ class MaslOut:
                     if idents:
                         for i in idents:
                             if i == "I":
-                                thisattr.preferred = True
+                                thisattr.is_preferred = True
                             found = False
                             for ident in thisclass.identifiers:
                                 if ident.identnum == i:
@@ -170,7 +173,7 @@ class MaslOut:
                             if not ref[0] == "R":
                                 relnum = ref[1:]
                             aref = attref(relnum)
-                            #print(aref.ref)
+                            print(aref.ref)
                             thisattr.references.append(aref)
 
                 classattrs.pop(0)  # done with this attribute line
@@ -237,6 +240,9 @@ class MaslOut:
                 if aclass:
                     acn = aclass.replace(" ","")
                     n = text_file.write(" using " + acn + ";\n")
+                    for ac in model_class_list:
+                        if ac.classname == acn:
+                            ac.is_associative = True
                 else:
                     n = text_file.write(";\n");
                 tclass = 0
@@ -277,15 +283,18 @@ class MaslOut:
             for attr in c.attrlist:
                 if attr.references == []:
                     print("non-referential: " + attr.name)
-                    if attr.name.endswith("ID") and attr.type == "undef":
-                        attr.type = "assigned_id"
-                        print("update ID type for " + attr.name)
+                    if attr.type == "undef":
+                        if attr.name.endswith("ID"):
+                            attr.type = "assigned_id"
+                            print("update ID type for " + attr.name)
                 else:
                     print("resolving: " + attr.name)
                     for reference in attr.references:
                         print(" found relation number: " + reference.ref)
                         classresolved = False
                         for r in bin_rel_list:
+                            if c.is_associative:
+                                print("watch out!! - this is associative")
                             if reference.ref == r.rnum:
                                 reference.rel = r
                                 xclass = r.pclass
@@ -305,15 +314,13 @@ class MaslOut:
                                     reference.rclass = r.superclass
                                     classresolved = True
                         if classresolved:
-                            print("resolved to class: " + reference.rclass.classname)
+                            print(attr.name + " resolved to class: " + reference.rclass.classname)
                             for ident in reference.rclass.identifiers:
                                 for refattr in ident.attrs:
                                     if refattr.name == attr.name:
                                         print(attr.name + " is matched in " + reference.rclass.classname)
                                         reference.attr = refattr
                                         reference.resolved = True;
-                                        #if refattr.references:
-                                            #print("this reference chains")
                                         break
                                 if reference.resolved:
                                     break
@@ -323,6 +330,10 @@ class MaslOut:
                                     reference.attr = ident.attrs[0]
                                     print("resolved with " + reference.attr.name + " of type " + reference.attr.type)
                                     reference.resolved = True
+                if attr.type == "undef":
+                    attr.type = "Integer"
+
+                                
                     print("all refs scanned for: " + attr.name + " : " + attr.type)
             print(" end class\n")
         print("all classes done")
@@ -339,40 +350,39 @@ class MaslOut:
             text_file.write("  object "+ cname + " is\n")
             
             for a in c.attrlist:
-                atttype = ""
                 if not a.references:
                     print("    " + a.name + " : " + a.type)
                     text_file.write("    " + a.name + " : " + a.type + ";\n")
                 else:
-                    print("    " + a.name + " referential : ( ")
-                    text_file.write("    " + a.name + " referential : ( ")
-                    for eachref in a.references:
-                        ref = eachref
-                        while ref:
-                            print(" now looking at: " + ref.rclass.classname)
-                            referred = ref.rclass
-                            refattr = ref.attr
-                            classname = referred.classname
+                    p = ""
+                    if a.is_preferred:
+                        p = " preferred "
+                    print("    " + a.name + " : " + p + "referential ( ")
+                    text_file.write("    " + a.name + " : " + p + "referential ( ")
+                    sep = ""
+                    for ref in a.references:
+                        referred = ref.rclass
+                        refattr = ref.attr
+                        classname = referred.classname
+                        attname = "Undefined"
+                        atttype = "Integer"
+                        if refattr:
                             attname = refattr.name
                             atttype = refattr.type
-                            rel = ref.rel
-                            rum = rel.rnum
-                            phrase = ""
-                            sep = ""
-                            if ref.isbinary:
-                                phrase = "." + rel.pphrase
-                            print("   " + rnum + phrase  + "." + classname + attname + " ")
-                            n = text_file.write(rnum + phrase  + "." + classname + attname + " ")
-                            if refattr.references:
-                                ref = refattr.references[0]
-                                print(" jumping to " + ref.rclass.classname)
-                            else:
-                                break
-                        
+                        rel = ref.rel
+                        rnum = rel.rnum
+                        phrase = ""
+                        if ref.isbinary:
+                            phrase = "." + rel.pphrase
+                        print("   " + rnum + phrase  + "." + classname + "." + attname)
+                        n = text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
+                        sep = ", "
                     text_file.write(" ) " + atttype + ";\n")
 
             for ident in c.identifiers:
                 sep = ''
+                if ident.identnum == "I":
+                    continue
                 line = "  identifier is ( "
                 text_file.write("    identifier is ( ")
                 for attr in ident.attrs:
