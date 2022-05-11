@@ -189,62 +189,52 @@ class MaslOut:
             numtxt = r['rnum']
             rnum = numtxt
             if not numtxt[0] == "R":
-                rnum = numtxt[1:]
+                rnum = numtxt[1:]  # strip those U/O prefixes
             n = text_file.write("relationship " + rnum + " is ")
             if not 'superclass' in r.keys():
                 tside = r['t_side']
                 cn = tside['cname']
                 tc = cn.replace(" ","")
-                n = text_file.write(tc)
+
                 m = str(tside['mult'])
                 tcond = False
+                tcondtxt = " unconditionally "
                 if 'c' in m:
                     tcond = True
-                    n = text_file.write(" conditionally ")
-                else:
-                    n = text_file.write(" unconditionally ")
+                    tcondtxt = " conditionally "
+                tmult = False
+                tmulttxt = " one "
+                if 'M' in m:
+                    tmult = True
+                    tmulttxt = " many "
                 txt = tside['phrase']
                 tp = txt.replace(" ","_")
-                n = text_file.write(tp)
-                
+               
                 pside = r['p_side']
                 cn = pside['cname']
                 pc = cn.replace(" ","")
-                tmult = False
-                if 'M' in m:
-                    tmult = True
-                    n = text_file.write(" many ")
-                else:
-                    n = text_file.write(" one ")
-                n = text_file.write(pc + ",\n")
                 
-                n = text_file.write("  " + pc)
                 m = str(pside['mult'])
                 pcond = False
+                pcondtxt = " unconditionally "
                 if 'c' in m:
                     pcond = True
-                    n = text_file.write(" conditionally ")
-                else:
-                    n = text_file.write(" unconditionally ")
-                txt = pside['phrase']
-                pp = txt.replace(" ","_")
-                n = text_file.write(pp)
+                    pcondtxt = " conditionally "
                 pmult = False
+                pmulttxt = " one "
                 if 'M' in m:
                     pmult = True
-                    n = text_file.write(" many ")
-                else:
-                    n = text_file.write(" one ")
-                n = text_file.write(pc)
+                    pmulttxt = " many "
+                txt = pside['phrase']
+                pp = txt.replace(" ","_")
+
                 aclass = r.get('assoc_cname')
                 if aclass:
                     acn = aclass.replace(" ","")
-                    n = text_file.write(" using " + acn + ";\n")
                     for ac in model_class_list:
                         if ac.classname == acn:
                             ac.is_associative = True
-                else:
-                    n = text_file.write(";\n");
+
                 tclass = 0
                 pclass = 0
                 for c in model_class_list:
@@ -252,8 +242,11 @@ class MaslOut:
                         tclass = c
                     if c.classname == pc:
                         pclass = c
-                baclass = binassoc(rnum, tclass, tcond, tmult, tclass, pp, pcond, pmult, pclass, aclass)
+                baclass = binassoc(rnum, tp, tcond, tmult, tclass, pp, pcond, pmult, pclass, aclass)
                 bin_rel_list.append(baclass)
+
+                n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
+                n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc + ";\n")
 
 
             else:
@@ -342,6 +335,7 @@ class MaslOut:
         """Output class definitions"""
 
         print(" ")
+        text_file.write("\n")
         
         for c in model_class_list:
            
@@ -350,13 +344,13 @@ class MaslOut:
             text_file.write("  object "+ cname + " is\n")
             
             for a in c.attrlist:
+                p = ""
+                if a.is_preferred:
+                    p = " preferred "
                 if not a.references:
-                    print("    " + a.name + " : " + a.type)
-                    text_file.write("    " + a.name + " : " + a.type + ";\n")
+                    print("    " + a.name + " : " + p + a.type)
+                    text_file.write("    " + a.name + " : " + p + a.type + ";\n")
                 else:
-                    p = ""
-                    if a.is_preferred:
-                        p = " preferred "
                     print("    " + a.name + " : " + p + "referential ( ")
                     text_file.write("    " + a.name + " : " + p + "referential ( ")
                     sep = ""
