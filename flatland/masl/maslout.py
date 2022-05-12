@@ -38,22 +38,50 @@ class identifier:
         self.identnum = identnum
         self.attrs = []
 
-# a resolvable link in a formalizing referential chain
-# attributes which will formalize an association have 
-# appended, the relationship numbers involved.
-# resolution of a reference is achived by determining
+# a resolvable link in a formalizing referential chain:
+# attributes which formalize an association have, appended
+# in the description, the relationship numbers involved.
+# resolution of a reference is achieved by determining
 # the attribute of the referred-to class in the relationship
 # that will supply the value of this referential.
 
-class attribute_relationship_reference:                 
+class attr_rel_ref:                 
     def __init__(self, relnum):
         self.relnum = relnum    # the number of a relationship 
         self.rel = 0            # the relationship instance matching the number
-        self.isbinary = 0       # true if not a sub/supertype relationship
         self.rclass = 0         # when resolved, the referred-to class
         self.rphrase = ""       # when resolved, the relationship ohrase
-        self.attr = 0           #
+        self.rattr = 0           #
         self.resolved = False
+    def resolve(self, attrname, refclass, phrase):
+        for attr in refclass.attrlist:
+            matched = False
+            if attr.name == attrname:
+                self.rclass = refclass
+                self.rattr = attr
+                self.rphrase = phrase
+                matched = True
+                self.resolved = True
+                print(attrname + " is matched in " + refclass.classname)
+                break
+        if not matched:
+            for attr in refclass.attrlist:
+                if attr.name == "ID":
+                    self.rclass = refclass
+                    self.rattr = attr
+                    self.rphrase = phrase
+                    matched = True
+                    self.resolved = True
+                    print(attrname + " is matched with ID in " + refclass.classname)
+                    break
+        if not matched:
+            ident = refclass.identifiers[0]  # heuristic: only 1 identifying attribute
+            if len(ident.attrs) == 1:
+                self.rclass = refclass
+                self.rattr = ident.attrs[0]
+                print("heuristically resolved with " + self.rattr.name + " of type " + self.rattr.type)
+                self.resolved = True
+            
               
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass, aclass):
@@ -182,7 +210,7 @@ class MaslOut:
                             relnum = ref
                             if not ref[0] == "R":
                                 relnum = ref[1:]
-                            aref = attribute_relationship_reference(relnum)
+                            aref = attr_rel_ref(relnum)
                             print(aref.relnum)
                             thisattr.references.append(aref)
 
@@ -297,52 +325,33 @@ class MaslOut:
                     print("resolving: " + attr.name)
                     for reference in attr.references:
                         print(" found relation number: " + reference.relnum)
-                        classresolved = False
                         for r in bin_rel_list:
                             if reference.relnum == r.rnum:
                                 reference.rel = r
                                 if c.is_associative:
-                                    binref_resolve(reference, attr.name, r.tclass, r.tphrase)
+                                    reference.resolve(attr.name, r.tclass, r.tphrase)
                                     if not reference.resolved:
-                                        binref_resolve(reference, attr.name, r.pclass, r.pphrase)
-                                else
+                                        reference.resolve(attr.name, r.pclass, r.pphrase)
+                                else:
                                     aclass = r.pclass
                                     aphrase = r.pphrase
                                     if c == r.tclass:   # if reflexive, that's OK
                                         if r.is_reflexive:
-                                            binref_resolve(reference, attr.name, r.tclass, r.pphrase)
+                                            reference.resolve(attr.name, r.tclass, r.pphrase)
                                         else:  # inconsistency in relationship definition: swap sides
                                             print("oops! - T&P mixed " + r.tclass.classname)
                                             aclass = r.tclass
                                             aphrase = r.tphrase
-                                    binref_resolve(reference, attr.name, aclass, aphrase)
-                                classresolved = True;
-                                break
-                        if not classresolved:
+                                    reference.resolve(attr.name, aclass, aphrase)
+                                if reference.resolved:
+                                    break
+                        if not reference.resolved:
                             for r in sup_rel_list:
                                 if reference.relnum == r.rnum:
                                     reference.rel = r
                                     if r.superclass.classname == c.classname:
                                         print("oops! - subsuper crossed up")
-                                    reference.rclass = r.superclass
-                                    classresolved = True
-                        if classresolved:
-                            print(attr.name + " resolved to class: " + reference.rclass.classname)
-                            for ident in reference.rclass.identifiers:
-                                for refattr in ident.attrs:
-                                    if refattr.name == attr.name:
-                                        print(attr.name + " is matched in " + reference.rclass.classname)
-                                        reference.attr = refattr
-                                        reference.resolved = True;
-                                        break
-                                if reference.resolved:
-                                    break
-                            if not reference.resolved:
-                                ident = reference.rclass.identifiers[0]
-                                if len(ident.attrs) == 1:
-                                    reference.attr = ident.attrs[0]
-                                    print("resolved with " + reference.attr.name + " of type " + reference.attr.type)
-                                    reference.resolved = True
+                                    reference.resolve(attr.name, r.superclass, "")
                 if attr.type == "undef":
                     attr.type = "RefAttr"
 
@@ -375,19 +384,20 @@ class MaslOut:
                     text_file.write("    " + a.name + " : " + p + "referential ( ")
                     sep = ""
                     for ref in a.references:
-                        referred = ref.rclass
-                        refattr = ref.attr
-                        classname = referred.classname
+                        classname = "Noclass"
                         attname = "Undefined"
-                        atttype = "Integer"
-                        if refattr:
+                        atttype = "RefAttr"
+                        phrase = ""
+                        if ref.resolved:
+                            referred = ref.rclass
+                            refattr = ref.rattr
+                            classname = referred.classname
                             attname = refattr.name
                             atttype = refattr.type
+                            if not ref.rphrase == "":
+                                phrase = "." + ref.rphrase
                         rel = ref.rel
                         rnum = rel.rnum
-                        phrase = ""
-                        if ref.isbinary:
-                            phrase = "." + ref.rphrase
                         print("   " + rnum + phrase  + "." + classname + "." + attname)
                         n = text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
                         sep = ", "
