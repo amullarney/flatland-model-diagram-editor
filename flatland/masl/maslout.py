@@ -17,6 +17,9 @@ from arpeggio import visit_parse_tree, NoMatch
 from collections import namedtuple
 from flatland.masl.attr_visitor import AttrVisitor
 
+# A modeled class discovered in the parse of the input file.
+# These class descriptions are collected in a list.
+
 class modelclass:
     def __init__(self, classname, keyletter):
         self.classname = classname
@@ -26,62 +29,79 @@ class modelclass:
         self.identifiers.append(identifier("I"))
         self.is_associative = False
 
+# A discovered attribute belonging to a class.
+# The details are separately parsed by a dedicated parser.
+
 class attribute:
     def __init__(self, attrname, attrtype):
         self.name = attrname
         self.type = attrtype
-        self.is_preferred = False
-        self.references = []  # info about relationships formalized using this attribute
-        
+        self.is_preferred = False  # True only if the attribute is designated as {I}
+        self.references = []       # info about relationships formalized using this attribute
+
+# One or more attributes whose values constitute an instance identifier.
+       
 class identifier:
     def __init__(self, identnum):
-        self.identnum = identnum
-        self.attrs = []
+        self.identnum = identnum  # the 'number' of the identifier
+        self.attrs = []           # a list of contributing attributes
 
-# a resolvable link in a formalizing referential chain:
+# A resolvable reference in a formalizing referential chain:
 # attributes which formalize an association have, appended
 # in the description, the relationship numbers involved.
-# resolution of a reference is achieved by determining
+# Resolution of a reference is achieved by determining
 # the attribute of the referred-to class in the relationship
 # that will supply the value of this referential.
+# An attribute may participate in formalization of more than
+# relationship.
 
 class attr_rel_ref:                 
     def __init__(self, relnum):
         self.relnum = relnum    # the number of a relationship 
-        self.rel = 0            # the relationship instance matching the number
-        self.rclass = 0         # when resolved, the referred-to class
-        self.rphrase = ""       # when resolved, the relationship ohrase
-        self.rattr = 0           #
-        self.resolved = False
+        self.resolutions = []   # an list of one or more referential resolutions
+
+# A method which attempts to resolve a referential:
+# Attempts to match 'target' attributes by name.
+# If that fails, some heuristics are attempted
+
     def resolve(self, attrname, refclass, phrase):
         for attr in refclass.attrlist:
             matched = False
             if attr.name == attrname:
-                self.rclass = refclass
-                self.rattr = attr
-                self.rphrase = phrase
+                self.resolutions.append(resolution(refclass, attr, phrase))
                 matched = True
-                self.resolved = True
-                print(attrname + " is matched in " + refclass.classname)
+                print(attrname + " is matched in " + refclass.classname + " with " + phrase)
                 break
         if not matched:
             for attr in refclass.attrlist:
+                taken = False
                 if attr.name == "ID":
-                    self.rclass = refclass
-                    self.rattr = attr
-                    self.rphrase = phrase
+                    self.resolutions.append(resolution(refclass, attr, phrase))
                     matched = True
-                    self.resolved = True
-                    print(attrname + " is matched with ID in " + refclass.classname)
+                    print(attrname + " is matched with ID in " + refclass.classname + " with " + phrase)
                     break
         if not matched:
-            ident = refclass.identifiers[0]  # heuristic: only 1 identifying attribute
-            if len(ident.attrs) == 1:
-                self.rclass = refclass
-                self.rattr = ident.attrs[0]
-                print("heuristically resolved with " + self.rattr.name + " of type " + self.rattr.type)
-                self.resolved = True
-            
+            ident1 = refclass.identifiers[0]  # heuristic: only 1 {I} identifying attribute?
+            if len(ident1.attrs) == 1:
+                hres = resolution(refclass, ident1.attrs[0], phrase)
+                self.resolutions.append(hres)
+                print("heuristically resolved with: " + hres.rattr.name + ", type " + hres.rattr.type + " with " + hres.rphrase)
+            else:
+                for iattr in ident1.attrs:
+                    if iattr.name == "Name":
+                        hres = resolution(refclass, iattr, phrase)
+                        self.resolutions.append(hres)
+                        print("heuristically resolved with Name: " + ", type " + hres.rattr.type + " with " + hres.rphrase)
+                        
+
+
+# an instance of a resolved referential; it records the 'target' class, attribute and phrase.
+
+class resolution:
+    def __init__(self, rclass, rattr, rphrase):
+        self.rclass = rclass
+        self.rattr = rattr
+        self.rphrase = rphrase         
               
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass, aclass):
@@ -177,11 +197,11 @@ class MaslOut:
                 aline = {}
                 for x in result:
                     aline.update(x)
-                attrname = aline['name']
-                attrtype = aline.get('type')
+                attrname = aline['aname']
+                attrtype = aline.get('atype')
                 if not attrtype:
-                    attrtype = "undef"  # default.. for now
-                
+                    attrtype = "undefinedType"  # default.. for now
+
                 thisattr = attribute(attrname, attrtype)
                 thisclass.attrlist.append(thisattr)
                 print("attribute: " + attrname)
@@ -316,11 +336,7 @@ class MaslOut:
             print(" Defined class: " + c.classname)
             for attr in c.attrlist:
                 if attr.references == []:
-                    print("non-referential: " + attr.name)
-                    if attr.type == "undef":
-                        if attr.name.endswith("ID"):
-                            attr.type = "assigned_id"
-                            print("update ID type for " + attr.name)
+                    print("non-referential: " + attr.name + " " + attrtype)
                 else:
                     print("resolving: " + attr.name)
                     for reference in attr.references:
@@ -329,30 +345,31 @@ class MaslOut:
                             if reference.relnum == r.rnum:
                                 reference.rel = r
                                 if c.is_associative:
+                                    print("resolving associative references for: " + c.classname)
                                     reference.resolve(attr.name, r.tclass, r.tphrase)
-                                    if not reference.resolved:
+                                    if not r.is_reflexive:
                                         reference.resolve(attr.name, r.pclass, r.pphrase)
+                                    for res in reference.resolutions:
+                                        print(res.rphrase)
+                                    print("done with associative")
                                 else:
                                     aclass = r.pclass
                                     aphrase = r.pphrase
-                                    if c == r.tclass:   # if reflexive, that's OK
-                                        if r.is_reflexive:
-                                            reference.resolve(attr.name, r.tclass, r.pphrase)
-                                        else:  # inconsistency in relationship definition: swap sides
-                                            print("oops! - T&P mixed " + r.tclass.classname)
-                                            aclass = r.tclass
-                                            aphrase = r.tphrase
+                                    if c == r.pclass:   # inconsistency in relationship definition: swap sides
+                                        print("oops! - T&P mixed " + r.pclass.classname)
+                                        aclass = r.tclass
+                                        aphrase = r.tphrase
                                     reference.resolve(attr.name, aclass, aphrase)
-                                if reference.resolved:
+                                if not reference.resolutions == []:
                                     break
-                        if not reference.resolved:
+                        if reference.resolutions == []:
                             for r in sup_rel_list:
                                 if reference.relnum == r.rnum:
                                     reference.rel = r
                                     if r.superclass.classname == c.classname:
                                         print("oops! - subsuper crossed up")
                                     reference.resolve(attr.name, r.superclass, "")
-                if attr.type == "undef":
+                if attr.type == "undefinedType":
                     attr.type = "RefAttr"
 
                                 
@@ -388,19 +405,19 @@ class MaslOut:
                         attname = "Undefined"
                         atttype = "RefAttr"
                         phrase = ""
-                        if ref.resolved:
-                            referred = ref.rclass
-                            refattr = ref.rattr
+                        for res in ref.resolutions:
+                            referred = res.rclass
+                            refattr = res.rattr
                             classname = referred.classname
                             attname = refattr.name
                             atttype = refattr.type
-                            if not ref.rphrase == "":
-                                phrase = "." + ref.rphrase
-                        rel = ref.rel
-                        rnum = rel.rnum
-                        print("   " + rnum + phrase  + "." + classname + "." + attname)
-                        n = text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
-                        sep = ", "
+                            if not res.rphrase == "":
+                                phrase = "." + res.rphrase
+                            rel = ref.rel
+                            rnum = rel.rnum
+                            print("   " + rnum + phrase  + "." + classname + "." + attname)
+                            n = text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
+                            sep = ", "
                     text_file.write(" ) " + atttype + ";\n")
 
             for ident in c.identifiers:
@@ -427,5 +444,5 @@ class MaslOut:
         for c in model_class_list:
             for attr in c.attrlist:
                 for ref in attr.references:
-                    if not ref.resolved:
+                    if ref.resolutions == []:
                         print(c.classname + " has unresolved " + attr.name + " ref ")

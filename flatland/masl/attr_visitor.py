@@ -38,8 +38,16 @@ class AttrVisitor(PTNodeVisitor):
         """All caps word"""
         return node.value  # No children since this is a literal
 
+    def visit_aword(self, node, children):
+        print("aword: " + node.value)
+        return node.value  # No children since this is a literal
+
     def visit_icaps_name(self, node, children):
         """Model element name"""
+        name = ''.join(children)
+        return name
+
+    def visit_aname(self, node, children):
         name = ''.join(children)
         return name
 
@@ -49,7 +57,8 @@ class AttrVisitor(PTNodeVisitor):
     def visit_attrtype(self, node, children):
         concat = ''.join(children)
         name = concat.replace(" ","")
-        return {"type": name}
+        print("visiting attrtype: " + name)
+        return {"atype": name}
 
     def visit_attrinfo(self, node, children):
         info = {}
@@ -63,7 +72,7 @@ class AttrVisitor(PTNodeVisitor):
     def visit_attrname(self, node, children):
         concat = ''.join(children)
         name = concat.replace(" ","")
-        return {"name": name}
+        return {"aname": name}
 
     # Root
     def visit_attr_line(self, node, children):
