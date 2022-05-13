@@ -48,20 +48,20 @@ class identifier:
 
 # A resolvable reference in a formalizing referential chain:
 # attributes which formalize an association have, appended
-# in the description, the relationship numbers involved.
+# in their description, the relationship numbers involved.
 # Resolution of a reference is achieved by determining
 # the attribute of the referred-to class in the relationship
-# that will supply the value of this referential.
+# that supplies the value of this referential attribute.
 # An attribute may participate in formalization of more than
 # relationship.
 
 class attr_rel_ref:                 
     def __init__(self, relnum):
         self.relnum = relnum    # the number of a relationship 
-        self.resolutions = []   # an list of one or more referential resolutions
+        self.resolutions = []   # a list of one or more referential resolutions
 
-# A method which attempts to resolve a referential:
-# Attempts to match 'target' attributes by name.
+# A method which attempts to resolve a referential reference:
+# Attempts to match 'target' attribute in referred-to class by name.
 # If that fails, some heuristics are attempted
 
     def resolve(self, attrname, refclass, phrase):
@@ -74,7 +74,6 @@ class attr_rel_ref:
                 break
         if not matched:
             for attr in refclass.attrlist:
-                taken = False
                 if attr.name == "ID":
                     self.resolutions.append(resolution(refclass, attr, phrase))
                     matched = True
@@ -85,15 +84,15 @@ class attr_rel_ref:
             if len(ident1.attrs) == 1:
                 hres = resolution(refclass, ident1.attrs[0], phrase)
                 self.resolutions.append(hres)
+                matched = True
                 print("heuristically resolved with: " + hres.rattr.name + ", type " + hres.rattr.type + " with " + hres.rphrase)
             else:
                 for iattr in ident1.attrs:
                     if iattr.name == "Name":
                         hres = resolution(refclass, iattr, phrase)
                         self.resolutions.append(hres)
+                        matched = True
                         print("heuristically resolved with Name: " + ", type " + hres.rattr.type + " with " + hres.rphrase)
-                        
-
 
 # an instance of a resolved referential; it records the 'target' class, attribute and phrase.
 
@@ -103,6 +102,8 @@ class resolution:
         self.rattr = rattr
         self.rphrase = rphrase         
               
+
+# an instance of a binary association - which includes associative              
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass, aclass):
         self.rnum = rnum
@@ -114,16 +115,17 @@ class binassoc:
         self.pcond = pcond
         self.pmult = pmult
         self.pclass = pclass
-        self.aclass = aclass
+        self.aclass = aclass  # associative class, if present
         self.is_reflexive = False
 
-        
+# an instance of a super-subtype association        
 class superassoc:
     def __init__(self, rnum, superclass):
         self.rnum = rnum
         self.superclass = superclass
         self.subclasslist = []
             
+# a parser for an attribute description
 class attr_parser:
     def __init__(self, grammar_file_name, root_rule_name):
         self.root_rule_name = root_rule_name
@@ -349,10 +351,8 @@ class MaslOut:
                                     reference.resolve(attr.name, r.tclass, r.tphrase)
                                     if not r.is_reflexive:
                                         reference.resolve(attr.name, r.pclass, r.pphrase)
-                                    for res in reference.resolutions:
-                                        print(res.rphrase)
-                                    print("done with associative")
                                 else:
+                                    # take a guess at picking the "other end" class in this binary association
                                     aclass = r.pclass
                                     aphrase = r.pphrase
                                     if c == r.pclass:   # inconsistency in relationship definition: swap sides
@@ -360,9 +360,30 @@ class MaslOut:
                                         aclass = r.tclass
                                         aphrase = r.tphrase
                                     reference.resolve(attr.name, aclass, aphrase)
-                                if not reference.resolutions == []:
-                                    break
-                        if reference.resolutions == []:
+                                    if reference.resolutions == []:
+                                        print("out of ideas for: " + c.classname + " " + attr.name + " " + r.rnum)
+                                        takenlist = []
+                                        for cattr in c.attrlist:
+                                            for ref in cattr.references:
+                                                if ref.relnum == r.rnum:
+                                                    for res in ref.resolutions:
+                                                        takenlist.append(res.rattr.name)
+                                        print(takenlist)
+                                        ident1 = aclass.identifiers[0]
+                                        for iattr in ident1.attrs:  # try to find an unmatched identifying attribute...
+                                            candidate = iattr.name
+                                            for taken in takenlist:
+                                                if iattr.name == taken:
+                                                    candidate = ""
+                                                    break
+                                            if not candidate == "":
+                                                print("well, maybe: " + candidate)
+                                                for iattr in ident1.attrs:
+                                                    if iattr.name == candidate:
+                                                        res = resolution(aclass, iattr, aphrase)
+                                                        reference.resolutions.append(res)
+                                break
+                        if reference.resolutions == []:  # not resolved; may be a sub-super association
                             for r in sup_rel_list:
                                 if reference.relnum == r.rnum:
                                     reference.rel = r

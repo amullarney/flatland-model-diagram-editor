@@ -60,7 +60,7 @@ def parse(cl_input):
                         help='Show the list of background color names')
     parser.add_argument('-MASL', '--masl', action='store_true',
                         help='Create file of MASL class and relationship definitions')
-    parser.add_argument('-x', '--translate', action='store',
+    parser.add_argument('-x', '--translate', action='store', default='masl.mod',
                         help='Name of file for MASL translation')
     return parser.parse_args(cl_input)
 
