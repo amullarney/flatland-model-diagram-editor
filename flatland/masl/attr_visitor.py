@@ -39,15 +39,11 @@ class AttrVisitor(PTNodeVisitor):
         return node.value  # No children since this is a literal
 
     def visit_aword(self, node, children):
-        print("aword: " + node.value)
+        """Any word"""
         return node.value  # No children since this is a literal
 
     def visit_icaps_name(self, node, children):
         """Model element name"""
-        name = ''.join(children)
-        return name
-
-    def visit_aname(self, node, children):
         name = ''.join(children)
         return name
 
@@ -57,7 +53,6 @@ class AttrVisitor(PTNodeVisitor):
     def visit_attrtype(self, node, children):
         concat = ''.join(children)
         name = concat.replace(" ","")
-        print("visiting attrtype: " + name)
         return {"atype": name}
 
     def visit_attrinfo(self, node, children):

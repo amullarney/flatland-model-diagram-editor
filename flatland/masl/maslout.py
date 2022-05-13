@@ -30,7 +30,8 @@ class modelclass:
         self.is_associative = False
 
 # A discovered attribute belonging to a class.
-# The details are separately parsed by a dedicated parser.
+# The flatland parser presents these as a block of text
+# The details of each line are separately parsed by a dedicated parser.
 
 class attribute:
     def __init__(self, attrname, attrtype):
@@ -40,6 +41,7 @@ class attribute:
         self.references = []       # info about relationships formalized using this attribute
 
 # One or more attributes whose values constitute an instance identifier.
+# The identifier number is I,I2,Ix from the {I, I2, Ix} notation
        
 class identifier:
     def __init__(self, identnum):
@@ -55,14 +57,16 @@ class identifier:
 # An attribute may participate in formalization of more than
 # relationship.
 
-class attr_rel_ref:                 
+class attr_rel_ref:  # attribute relationship reference               
     def __init__(self, relnum):
         self.relnum = relnum    # the number of a relationship 
         self.resolutions = []   # a list of one or more referential resolutions
 
-# A method which attempts to resolve a referential reference:
-# Attempts to match 'target' attribute in referred-to class by name.
-# If that fails, some heuristics are attempted
+# A method which attempts to resolve attribute referential references:
+# Each 'resolve' attempts to match a 'target' attribute, by name, in a referred-to.
+# Instances of resolution class are accumulated for each relationship resolved.
+# Note that associative class attributes (non-reflexive) will search both target classes.
+# If name matching fails, some heuristics are attempted
 
     def resolve(self, attrname, refclass, phrase):
         for attr in refclass.attrlist:
@@ -80,13 +84,15 @@ class attr_rel_ref:
                     print(attrname + " is matched with ID in " + refclass.classname + " with " + phrase)
                     break
         if not matched:
-            ident1 = refclass.identifiers[0]  # heuristic: only 1 {I} identifying attribute?
+            # heuristic (1) : if there is only one {I} identifying attribute in  the target, use it.
+            ident1 = refclass.identifiers[0]  
             if len(ident1.attrs) == 1:
                 hres = resolution(refclass, ident1.attrs[0], phrase)
                 self.resolutions.append(hres)
                 matched = True
                 print("heuristically resolved with: " + hres.rattr.name + ", type " + hres.rattr.type + " with " + hres.rphrase)
             else:
+                # heuristic (2) : as above, but guessing that 'Name' is special
                 for iattr in ident1.attrs:
                     if iattr.name == "Name":
                         hres = resolution(refclass, iattr, phrase)
@@ -94,7 +100,8 @@ class attr_rel_ref:
                         matched = True
                         print("heuristically resolved with Name: " + ", type " + hres.rattr.type + " with " + hres.rphrase)
 
-# an instance of a resolved referential; it records the 'target' class, attribute and phrase.
+# an instance of a resolved referential for a referential attribute:
+# it records the 'target' class, attribute and phrase for one resolved relation.
 
 class resolution:
     def __init__(self, rclass, rattr, rphrase):
@@ -103,7 +110,7 @@ class resolution:
         self.rphrase = rphrase         
               
 
-# an instance of a binary association - which includes associative              
+# an instance of a binary association - which may include an associative class.           
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass, aclass):
         self.rnum = rnum
@@ -145,6 +152,11 @@ class attr_parser:
             raise ModelParseError(attr_text, e) from None
         return parse_tree
 
+# This classes one and only method uses the Flatland parser to discover model classes and associations.
+# MASL output is generated along the way in some cases: see text_file.write()
+# Associations are linked to their classes;
+# Class attribute text blocks are parsed for details;
+# Resolution of referential links is attempted;
 
 class MaslOut:
 
@@ -193,7 +205,7 @@ class MaslOut:
             print("attribute info for : " + thisclass.classname)
             while not classattrs == []:
                 attrline = classattrs[0]
-                # Now, parse this line for details
+                # Now, parse this attribute text line for details
                 attr_tree = att_parser.parse_attr(attrline)
                 result = visit_parse_tree(attr_tree, AttrVisitor(debug=False))
                 aline = {}
@@ -211,7 +223,7 @@ class MaslOut:
                 info = aline.get('info')
                 if info:
                     idents = info.get('idents')  # identifier(s) this attribute contributes to
-                    refs = info.get('refs')      # relationship number(s) formalized
+                    refs = info.get('refs')      # relationship number(s) formalized by this attribute
   
                     if idents:
                         for i in idents:
@@ -226,20 +238,21 @@ class MaslOut:
                                 ident = identifier(i)
                                 thisclass.identifiers.append(ident)
                             ident.attrs.append(thisattr)
-                            print("add to ident: " + ident.identnum + " " + thisattr.name)
+                            #print("add to ident: " + ident.identnum + " " + thisattr.name)
                     if refs:
                         for ref in refs:
                             relnum = ref
                             if not ref[0] == "R":
                                 relnum = ref[1:]
                             aref = attr_rel_ref(relnum)
-                            print(aref.relnum)
+                            #print(aref.relnum)
                             thisattr.references.append(aref)
 
                 classattrs.pop(0)  # done with this attribute line
 
         # Get all association data - this will be needed to type referential attributes
-        # Create a set of association data classes for searching...
+        # Create two lists of association data class types - binary and sub-super
+        # Following Flatland convention, binary associations have 't' and 'p' 'sides'
 
         bin_rel_list = []
         sup_rel_list = []
@@ -309,10 +322,11 @@ class MaslOut:
 
                 n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
                 n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc + ";\n")
-                
+             
 
 
-            else:
+            else:  # this is a sub-supertype association
+            
                 s = r['superclass']
                 cn = s.replace(" ","")
                 n = text_file.write(cn + " is_a (")
@@ -333,7 +347,8 @@ class MaslOut:
                             break
                 n = text_file.write(");\n");
                 
-
+        # Now attempt to resolve the referential attributes
+        
         for c in model_class_list:
             print(" Defined class: " + c.classname)
             for attr in c.attrlist:
@@ -361,14 +376,15 @@ class MaslOut:
                                         aphrase = r.tphrase
                                     reference.resolve(attr.name, aclass, aphrase)
                                     if reference.resolutions == []:
-                                        print("out of ideas for: " + c.classname + " " + attr.name + " " + r.rnum)
+                                        # heuristic (2) : look for an unmatched identifier in target, for this relationship
+                                        #print("out of ideas for: " + c.classname + " " + attr.name + " " + r.rnum)
                                         takenlist = []
                                         for cattr in c.attrlist:
                                             for ref in cattr.references:
                                                 if ref.relnum == r.rnum:
                                                     for res in ref.resolutions:
                                                         takenlist.append(res.rattr.name)
-                                        print(takenlist)
+                                        #print(takenlist)
                                         ident1 = aclass.identifiers[0]
                                         for iattr in ident1.attrs:  # try to find an unmatched identifying attribute...
                                             candidate = iattr.name
@@ -377,7 +393,7 @@ class MaslOut:
                                                     candidate = ""
                                                     break
                                             if not candidate == "":
-                                                print("well, maybe: " + candidate)
+                                                #print("well, maybe: " + candidate)
                                                 for iattr in ident1.attrs:
                                                     if iattr.name == candidate:
                                                         res = resolution(aclass, iattr, aphrase)
@@ -394,7 +410,7 @@ class MaslOut:
                     attr.type = "RefAttr"
 
                                 
-                    print("all refs scanned for: " + attr.name + " : " + attr.type)
+                    #print("all refs scanned for: " + attr.name + " : " + attr.type)
             print(" end class\n")
         print("all classes done")
         
@@ -441,9 +457,11 @@ class MaslOut:
                             sep = ", "
                     text_file.write(" ) " + atttype + ";\n")
 
+            # output identifier groups for all non-preferred
+            
             for ident in c.identifiers:
                 sep = ''
-                if ident.identnum == "I":
+                if ident.identnum == "I":  # skip this group of 'preferred' identifiers
                     continue
                 line = "  identifier is ( "
                 text_file.write("    identifier is ( ")
@@ -461,6 +479,8 @@ class MaslOut:
 
         text_file.write("end domain;\n")
         text_file.close()
+        
+        # report unresolved referentials
 
         for c in model_class_list:
             for attr in c.attrlist:
