@@ -66,20 +66,25 @@ class attr_rel_ref:  # attribute relationship reference
 # Each 'resolve' attempts to match a 'target' attribute, by name, in a referred-to.
 # Instances of resolution class are accumulated for each relationship resolved.
 # Note that associative class attributes (non-reflexive) will search both target classes.
+# In that associative case, guard against duplication of resolution - noduplicate:True
 # If name matching fails, some heuristics are attempted
 
-    def resolve(self, attrname, refclass, phrase):
+    def resolve(self, attrname, refclass, phrase, noduplicate):
+        ident1 = refclass.identifiers[0]  
+        #for attr in ident1.attrs:
         for attr in refclass.attrlist:
             matched = False
             if attr.name == attrname:
-                self.resolutions.append(resolution(refclass, attr, phrase))
+                if self.resolutions == [] or not noduplicate:
+                    self.resolutions.append(resolution(refclass, attr, phrase))
                 matched = True
                 print(attrname + " is matched in " + refclass.classname + " with " + phrase)
                 break
         if not matched:
             for attr in refclass.attrlist:
                 if attr.name == "ID":
-                    self.resolutions.append(resolution(refclass, attr, phrase))
+                    if self.resolutions == [] or not noduplicate:
+                        self.resolutions.append(resolution(refclass, attr, phrase))
                     matched = True
                     print(attrname + " is matched with ID in " + refclass.classname + " with " + phrase)
                     break
@@ -243,6 +248,8 @@ class MaslOut:
                         for ref in refs:
                             relnum = ref
                             if not ref[0] == "R":
+                                if ref[0] == "O":
+                                    continue
                                 relnum = ref[1:]
                             aref = attr_rel_ref(relnum)
                             #print(aref.relnum)
@@ -262,6 +269,8 @@ class MaslOut:
             numtxt = r['rnum']
             rnum = numtxt
             if not numtxt[0] == "R":
+                if numtxt[0] == "O":
+                    continue  # these are not formalizable associations: see https://github.com/modelint/shlaer-mellor-metamodel/wiki/Ordinal-Relationship
                 rnum = numtxt[1:]  # strip those U/O prefixes
             n = text_file.write("relationship " + rnum + " is ")
             if not 'superclass' in r.keys():
@@ -321,7 +330,10 @@ class MaslOut:
                 bin_rel_list.append(baclass)
 
                 n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
-                n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc + ";\n")
+                n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
+                if aclass:
+                    n = text_file.write(" using " + acn)
+                n = text_file.write(";\n")
              
 
 
@@ -363,9 +375,9 @@ class MaslOut:
                                 reference.rel = r
                                 if c.is_associative:
                                     print("resolving associative references for: " + c.classname)
-                                    reference.resolve(attr.name, r.tclass, r.tphrase)
+                                    reference.resolve(attr.name, r.tclass, r.tphrase, False)
                                     if not r.is_reflexive:
-                                        reference.resolve(attr.name, r.pclass, r.pphrase)
+                                        reference.resolve(attr.name, r.pclass, r.pphrase, True)
                                 else:
                                     # take a guess at picking the "other end" class in this binary association
                                     aclass = r.pclass
@@ -374,7 +386,7 @@ class MaslOut:
                                         print("oops! - T&P mixed " + r.pclass.classname)
                                         aclass = r.tclass
                                         aphrase = r.tphrase
-                                    reference.resolve(attr.name, aclass, aphrase)
+                                    reference.resolve(attr.name, aclass, aphrase, False)
                                     if reference.resolutions == []:
                                         # heuristic (2) : look for an unmatched identifier in target, for this relationship
                                         #print("out of ideas for: " + c.classname + " " + attr.name + " " + r.rnum)
@@ -405,7 +417,7 @@ class MaslOut:
                                     reference.rel = r
                                     if r.superclass.classname == c.classname:
                                         print("oops! - subsuper crossed up")
-                                    reference.resolve(attr.name, r.superclass, "")
+                                    reference.resolve(attr.name, r.superclass, "", False)
                 if attr.type == "undefinedType":
                     attr.type = "RefAttr"
 
@@ -447,7 +459,7 @@ class MaslOut:
                             refattr = res.rattr
                             classname = referred.classname
                             attname = refattr.name
-                            atttype = refattr.type
+                            #atttype = refattr.type # don't bother with this
                             if not res.rphrase == "":
                                 phrase = "." + res.rphrase
                             rel = ref.rel
