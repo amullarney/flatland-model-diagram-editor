@@ -71,9 +71,8 @@ class attr_rel_ref:  # attribute relationship reference
 # If name matching fails, some heuristics are attempted
 
     def resolve(self, attrname, refclass, phrase, noduplicate):
-        ident1 = refclass.identifiers[0]  
-        for attr in ident1.attrs:
-        #for attr in refclass.attrlist:
+        ident = refclass.identifiers[0]  
+        for attr in ident.attrs:
             matched = False
             if attr.name == attrname:
                 self.resolutions.append(resolution(refclass, attr, phrase))
@@ -81,7 +80,7 @@ class attr_rel_ref:  # attribute relationship reference
                 print(attrname + " is matched in " + refclass.classname + " with " + phrase)
                 break
         if not matched:
-            for attr in refclass.attrlist:
+            for attr in ident.attrs:
                 if attr.name == "ID":
                     if self.resolutions == [] or not noduplicate:
                         self.resolutions.append(resolution(refclass, attr, phrase))
@@ -90,17 +89,16 @@ class attr_rel_ref:  # attribute relationship reference
                     break
         if not matched:
             # heuristic (1) : if there is only one {I} identifying attribute in  the target, use it.
-            ident1 = refclass.identifiers[0]  
-            if len(ident1.attrs) == 1:
-                hres = resolution(refclass, ident1.attrs[0], phrase)
+            if len(ident.attrs) == 1:
+                hres = resolution(refclass, ident.attrs[0], phrase)
                 self.resolutions.append(hres)
                 matched = True
                 print("heuristically resolved with: " + hres.rattr.name + ", type " + hres.rattr.type + " with " + hres.rphrase)
             else:
                 # heuristic (2) : as above, but guessing that 'Name' is special
-                for iattr in ident1.attrs:
-                    if iattr.name == "Name":
-                        hres = resolution(refclass, iattr, phrase)
+                for attr in ident.attrs:
+                    if attr.name == "Name":
+                        hres = resolution(refclass, attr, phrase)
                         self.resolutions.append(hres)
                         matched = True
                         print("heuristically resolved with Name: " + ", type " + hres.rattr.type + " with " + hres.rphrase)
@@ -281,7 +279,7 @@ class MaslOut:
         bin_rel_list = []
         sup_rel_list = []
         
-        for r in self.subsys.rels:  # r is the model data without any layout info
+        for r in self.subsys.rels:  # for each discovered relationship..
             #print(r)
             numtxt = r['rnum']
             rnum = numtxt
@@ -334,27 +332,29 @@ class MaslOut:
                         tclass = c
                     if c.classname == pc:
                         pclass = c
+
                 bin_assoc_class = binassoc(rnum, tp, tcond, tmult, tclass, pp, pcond, pmult, pclass)
                 bin_rel_list.append(bin_assoc_class)
 
                 if tclass == pclass:
                     bin_assoc_class.is_reflexive = True
+
+                n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
+                n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
                 
                 aclass = 0
                 aclass = r.get('assoc_cname')
                 if aclass:
                     acname = aclass.replace(" ","")
+                    print(numtxt + " associative using " + acname)
                     for c in model_class_list:
                         if c.classname == acname:
                             assoc_class = c
                             bin_assoc_class.aclass = assoc_class
                             bin_assoc_class.is_associative = True
                             break
+                            n = text_file.write(" using " + bin_assoc_class.aclass.classname)
 
-                n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
-                n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
-                if bin_assoc_class.is_associative:
-                    n = text_file.write(" using " + bin_assoc_class.aclass.classname)
                 n = text_file.write(";\n")
 
             else:  # this is a sub-supertype association
@@ -390,13 +390,16 @@ class MaslOut:
                 for r in bin_rel_list:
                     if formr.relnum == r.rnum:
                         formr.rel = r
-                    if r.is_associative and not r.is_reflexive:
-                        print(" associative: " + formr.relnum)
-                        for ident in r.tclass.identifiers:
-                            print(ident.identnum)
-                        for ident in r.pclass.identifiers:
-                            print(ident.identnum)
-                        print(" --- ")
+                        break
+                if r.is_associative and not r.is_reflexive:
+                    print(" associative: " + formr.relnum + " " + r.tclass.classname)
+                    for ident in r.tclass.identifiers:
+                        print(ident.identnum)
+                        
+                    print(r.pclass.classname)
+                    for ident in r.pclass.identifiers:
+                        print(ident.identnum)
+                    print(" --- ")
                 
       
         
@@ -412,18 +415,16 @@ class MaslOut:
                         for r in bin_rel_list:
                             if reference.relnum == r.rnum:
                                 reference.rel = r
-                                if r.is_associative:
-                                    print("resolving associative reference for: " + c.classname + " " + r.tclass.classname)
+                                if r.is_associative and not r.is_reflexive:
+                                    print("resolving associative reference for: " + c.classname)
                                     reference.resolve(attr.name, r.tclass, r.tphrase, False)
-                                    if not r.is_reflexive:
-                                        print("... and for: " + c.classname + " " + r.pclass.classname)
-                                        reference.resolve(attr.name, r.pclass, r.pphrase, True)
+                                    reference.resolve(attr.name, r.pclass, r.pphrase, True)
                                 else:
                                     # take a guess at picking the "other end" class in this binary association
                                     aclass = r.pclass
                                     aphrase = r.pphrase
                                     if c == r.pclass:   # inconsistency in relationship definition: swap sides
-                                        print("oops! - T&P mixed " + r.pclass.classname)
+                                        #print("oops! - T&P mixed " + r.pclass.classname)
                                         aclass = r.tclass
                                         aphrase = r.tphrase
                                     reference.resolve(attr.name, aclass, aphrase, False)
