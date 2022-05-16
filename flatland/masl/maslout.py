@@ -103,6 +103,34 @@ class attr_rel_ref:  # attribute relationship reference
                         matched = True
                         print("heuristically resolved with Name: " + ", type " + hres.rattr.type + " with " + hres.rphrase)
 
+
+def tryresolve(attrname, refclass, phrase, noduplicate, id):
+    matched = False
+    ident = refclass.identifiers[id-1]  
+    for attr in ident.attrs:
+        if attr.name == attrname:
+            matched = True
+            print(attrname + " is matched in " + refclass.classname + " with " + str(id))
+            break
+    if not matched:
+        for attr in ident.attrs:
+            if attr.name == "ID":
+                matched = True
+                print(attrname + " is matched with ID in " + refclass.classname + " with " + str(id))
+                break
+    if not matched:
+        # heuristic (1) : if there is only one {I} identifying attribute in  the target, use it.
+        if len(ident.attrs) == 1:
+            matched = True
+            print("heuristically resolved with: " + hres.rattr.name + ", type " + hres.rattr.type + " with " + hres.rphrase)
+        else:
+            # heuristic (2) : as above, but guessing that 'Name' is special
+            for attr in ident.attrs:
+                if attr.name == "Name":
+                    matched = True
+                    print("heuristically resolved with Name: " + ", type " + hres.rattr.type + " with " + hres.rphrase)
+    return matched
+
 # an instance of a resolved referential for a referential attribute:
 # it records the 'target' class, attribute and phrase for one resolved relation.
 
@@ -117,6 +145,12 @@ class formalizer:
         self.relnum = relnum
         self.rel = 0
         self.refattrs = []
+        
+class formattr:
+    def __init__(self, attr):
+        self.attr = attr
+        self.tmatch = 0
+        self.pmatch = 0
               
 
 # an instance of a binary association - which may include an associative class.           
@@ -267,7 +301,8 @@ class MaslOut:
                             if not found:
                                 formr = formalizer(relnum)
                                 thisclass.formalizers.append(formr)
-                            formr.refattrs.append(thisattr)
+                            fattr = formattr(thisattr)
+                            formr.refattrs.append(fattr)
                             
 
                 classattrs.pop(0)  # done with this attribute line
@@ -384,8 +419,8 @@ class MaslOut:
         for c in model_class_list:
             for formr in c.formalizers:
                 attrstr = ""
-                for attr in formr.refattrs:
-                    attrstr = attrstr + " " + attr.name
+                for fattr in formr.refattrs:
+                    attrstr = attrstr + " " + fattr.attr.name
                 print("formalize " + formr.relnum + " needs: " + attrstr)
                 for r in bin_rel_list:
                     if formr.relnum == r.rnum:
@@ -393,12 +428,47 @@ class MaslOut:
                         break
                 if r.is_associative and not r.is_reflexive:
                     print(" associative: " + formr.relnum + " " + c.classname)
-                    if len(r.tclass.identifiers) > 1:
+                    tlen = len(r.tclass.identifiers)
+                    if tlen > 1:
                         print(r.tclass.classname + " has multiple identifiers")
                         print("-")
-                    if len(r.pclass.identifiers) > 1:
+                    plen = len(r.pclass.identifiers)
+                    if plen > 1:
                         print(r.pclass.classname + " has multiple identifiers")
                         print("-")
+                    satisfied = False
+                    done = False
+                    tident = 1
+                    pident = 1
+                    while not satisfied and not done:
+                    
+                        for fattr in formr.refattrs:
+                            satisfied = True
+                            fattr.tmatch = tryresolve(fattr.attr.name, r.tclass, "", False, tident)
+                            fattr.patch = tryresolve(fattr.attr.name, r.pclass, "", False, pident)
+                            if fattr.tmatch == 0 and fattr.pmatch == 0:
+                                print("No match for " + fattr.attr.name)
+                                satisfied = False
+                                if tident < tlen:
+                                    for fattr in formr.refattrs:
+                                        fattr.tmatch = 0
+                                    tident = tident + 1
+                                    print("increment tident for " + r.tclass.classname)
+                                else:
+                                    if pident < plen:
+                                        for fattr in formr.refattrs:
+                                            fattr.pmatch = 0
+                                        pident = pident + 1
+                                        print("increment pident for " + r.pclass.classname)
+                                    else:
+                                        done = True
+                                        print("ran out of idents")
+                                    
+                    if satisfied:
+                        print("use identifiers: " +  str(r.tclass.identifiers[tident-1].identnum) + " for " + r.tclass.classname)
+                        print("  and " + str(r.pclass.identifiers[pident-1].identnum) + " for " + r.pclass.classname) 
+                            
+                    print("---")
 
 
         for c in model_class_list:
