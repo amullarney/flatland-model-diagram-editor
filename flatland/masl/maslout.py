@@ -27,7 +27,8 @@ class modelclass:
         self.attrlist = []
         self.identifiers = []
         self.identifiers.append(identifier("I"))
-        self.is_associative = False
+        #self.is_associative = False
+        self.formalizers = []
 
 # A discovered attribute belonging to a class.
 # The flatland parser presents these as a block of text
@@ -71,12 +72,11 @@ class attr_rel_ref:  # attribute relationship reference
 
     def resolve(self, attrname, refclass, phrase, noduplicate):
         ident1 = refclass.identifiers[0]  
-        #for attr in ident1.attrs:
-        for attr in refclass.attrlist:
+        for attr in ident1.attrs:
+        #for attr in refclass.attrlist:
             matched = False
             if attr.name == attrname:
-                if self.resolutions == [] or not noduplicate:
-                    self.resolutions.append(resolution(refclass, attr, phrase))
+                self.resolutions.append(resolution(refclass, attr, phrase))
                 matched = True
                 print(attrname + " is matched in " + refclass.classname + " with " + phrase)
                 break
@@ -112,12 +112,18 @@ class resolution:
     def __init__(self, rclass, rattr, rphrase):
         self.rclass = rclass
         self.rattr = rattr
-        self.rphrase = rphrase         
+        self.rphrase = rphrase
+        
+class formalizer:
+    def __init__(self, relnum):
+        self.relnum = relnum
+        self.rel = 0
+        self.refattrs = []
               
 
 # an instance of a binary association - which may include an associative class.           
 class binassoc:
-    def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass, aclass):
+    def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass):
         self.rnum = rnum
         self.tphrase = tphrase
         self.tcond = tcond
@@ -127,7 +133,8 @@ class binassoc:
         self.pcond = pcond
         self.pmult = pmult
         self.pclass = pclass
-        self.aclass = aclass  # associative class, if present
+        self.aclass = 0
+        self.is_associative = False
         self.is_reflexive = False
 
 # an instance of a super-subtype association        
@@ -243,7 +250,7 @@ class MaslOut:
                                 ident = identifier(i)
                                 thisclass.identifiers.append(ident)
                             ident.attrs.append(thisattr)
-                            #print("add to ident: " + ident.identnum + " " + thisattr.name)
+                            #print("add to ident: >" + ident.identnum + "< " + thisattr.name)
                     if refs:
                         for ref in refs:
                             relnum = ref
@@ -254,6 +261,16 @@ class MaslOut:
                             aref = attr_rel_ref(relnum)
                             #print(aref.relnum)
                             thisattr.references.append(aref)
+                            found = False
+                            for formr in thisclass.formalizers:
+                                if formr.relnum == relnum:
+                                    found = True
+                                    break
+                            if not found:
+                                formr = formalizer(relnum)
+                                thisclass.formalizers.append(formr)
+                            formr.refattrs.append(thisattr)
+                            
 
                 classattrs.pop(0)  # done with this attribute line
 
@@ -309,14 +326,7 @@ class MaslOut:
                     pmulttxt = " many "
                 txt = pside['phrase']
                 pp = txt.replace(" ","_")
-
-                aclass = r.get('assoc_cname')
-                if aclass:
-                    acn = aclass.replace(" ","")
-                    for ac in model_class_list:
-                        if ac.classname == acn:
-                            ac.is_associative = True
-
+                
                 tclass = 0
                 pclass = 0
                 for c in model_class_list:
@@ -324,18 +334,28 @@ class MaslOut:
                         tclass = c
                     if c.classname == pc:
                         pclass = c
-                baclass = binassoc(rnum, tp, tcond, tmult, tclass, pp, pcond, pmult, pclass, aclass)
+                bin_assoc_class = binassoc(rnum, tp, tcond, tmult, tclass, pp, pcond, pmult, pclass)
+                bin_rel_list.append(bin_assoc_class)
+
                 if tclass == pclass:
-                    baclass.is_reflexive = True
-                bin_rel_list.append(baclass)
+                    bin_assoc_class.is_reflexive = True
+                
+                aclass = 0
+                aclass = r.get('assoc_cname')
+                if aclass:
+                    acname = aclass.replace(" ","")
+                    for c in model_class_list:
+                        if c.classname == acname:
+                            assoc_class = c
+                            bin_assoc_class.aclass = assoc_class
+                            bin_assoc_class.is_associative = True
+                            break
 
                 n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
                 n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
-                if aclass:
-                    n = text_file.write(" using " + acn)
+                if bin_assoc_class.is_associative:
+                    n = text_file.write(" using " + bin_assoc_class.aclass.classname)
                 n = text_file.write(";\n")
-             
-
 
             else:  # this is a sub-supertype association
             
@@ -362,6 +382,25 @@ class MaslOut:
         # Now attempt to resolve the referential attributes
         
         for c in model_class_list:
+            for formr in c.formalizers:
+                attrstr = ""
+                for attr in formr.refattrs:
+                    attrstr = attrstr + " " + attr.name
+                print("formalize " + formr.relnum + " needs: " + attrstr)
+                for r in bin_rel_list:
+                    if formr.relnum == r.rnum:
+                        formr.rel = r
+                    if r.is_associative and not r.is_reflexive:
+                        print(" associative: " + formr.relnum)
+                        for ident in r.tclass.identifiers:
+                            print(ident.identnum)
+                        for ident in r.pclass.identifiers:
+                            print(ident.identnum)
+                        print(" --- ")
+                
+      
+        
+        for c in model_class_list:
             print(" Defined class: " + c.classname)
             for attr in c.attrlist:
                 if attr.references == []:
@@ -373,10 +412,11 @@ class MaslOut:
                         for r in bin_rel_list:
                             if reference.relnum == r.rnum:
                                 reference.rel = r
-                                if c.is_associative:
-                                    print("resolving associative references for: " + c.classname)
+                                if r.is_associative:
+                                    print("resolving associative reference for: " + c.classname + " " + r.tclass.classname)
                                     reference.resolve(attr.name, r.tclass, r.tphrase, False)
                                     if not r.is_reflexive:
+                                        print("... and for: " + c.classname + " " + r.pclass.classname)
                                         reference.resolve(attr.name, r.pclass, r.pphrase, True)
                                 else:
                                     # take a guess at picking the "other end" class in this binary association

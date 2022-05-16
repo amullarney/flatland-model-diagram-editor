@@ -21,7 +21,7 @@ class AttrVisitor(PTNodeVisitor):
         return None
 
     def visit_ident(self, node, children):
-        return node.value
+        return children[0] # discard any star (asterisk)
 
     def visit_rnum(self, node, children):
         return node.value
