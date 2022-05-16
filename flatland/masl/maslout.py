@@ -392,17 +392,15 @@ class MaslOut:
                         formr.rel = r
                         break
                 if r.is_associative and not r.is_reflexive:
-                    print(" associative: " + formr.relnum + " " + r.tclass.classname)
-                    for ident in r.tclass.identifiers:
-                        print(ident.identnum)
-                        
-                    print(r.pclass.classname)
-                    for ident in r.pclass.identifiers:
-                        print(ident.identnum)
-                    print(" --- ")
-                
-      
-        
+                    print(" associative: " + formr.relnum + " " + c.classname)
+                    if len(r.tclass.identifiers) > 1:
+                        print(r.tclass.classname + " has multiple identifiers")
+                        print("-")
+                    if len(r.pclass.identifiers) > 1:
+                        print(r.pclass.classname + " has multiple identifiers")
+                        print("-")
+
+
         for c in model_class_list:
             print(" Defined class: " + c.classname)
             for attr in c.attrlist:
