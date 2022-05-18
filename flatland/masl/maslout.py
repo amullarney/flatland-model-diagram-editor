@@ -28,7 +28,7 @@ class modelclass:
         self.identifiers = []
         self.identifiers.append(identifier("I"))
         #self.is_associative = False
-        self.formalizers = []
+        self.formalizedassocs = []
 
 # A discovered attribute belonging to a class.
 # The flatland parser presents these as a block of text
@@ -47,7 +47,7 @@ class attribute:
 class identifier:
     def __init__(self, identnum):
         self.identnum = identnum  # the 'number' of the identifier
-        self.attrs = []           # a list of contributing attributes
+        self.iattrs = []           # a list of contributing attributes
 
 # A resolvable reference in a formalizing referential chain:
 # attributes which formalize an association have, appended
@@ -76,7 +76,7 @@ class attr_rel_ref:  # attribute relationship reference
         ident = refclass.identifiers[0]  # default to using the primary identifier {I}
         if not identnum < 0:
             ident = refclass.identifiers[identnum - 1]  # override with specified identifier
-        for attr in ident.attrs:
+        for attr in ident.iattrs:
             matched = False
             if attr.name == attrname:
                 self.resolutions.append(resolution(refclass, attr, phrase))
@@ -84,7 +84,7 @@ class attr_rel_ref:  # attribute relationship reference
                 print(attrname + " is matched in " + refclass.classname + " with " + phrase)
                 break
         if not matched:
-            for attr in ident.attrs:
+            for attr in ident.iattrs:
                 if attr.name == "ID":
                     if self.resolutions == [] or not noduplicate:
                         self.resolutions.append(resolution(refclass, attr, phrase))
@@ -93,49 +93,33 @@ class attr_rel_ref:  # attribute relationship reference
                     break
         if not matched:
             # heuristic (1) : if there is only one {I} identifying attribute in the target, use it.
-            if len(ident.attrs) == 1:
-                hres = resolution(refclass, ident.attrs[0], phrase)
+            if len(ident.iattrs) == 1:
+                hres = resolution(refclass, ident.iattrs[0], phrase)
                 self.resolutions.append(hres)
                 matched = True
                 print("heuristically singly resolved with: " + hres.rattr.name + ", type: " + hres.rattr.type + " with " + hres.rphrase)
             else:
                 # heuristic (2) : as above, but guessing that 'Name' is special
-                for attr in ident.attrs:
+                for attr in ident.iattrs:
                     if attr.name == "Name":
                         hres = resolution(refclass, attr, phrase)
                         self.resolutions.append(hres)
                         matched = True
                         print("heuristically resolved with Name attribute: " + " type: " + hres.rattr.type + " with " + hres.rphrase)
 
-# Procedure tryresolve:
-# this procedure tries to match a referential attribute to one the attributes of a nominated identifier of the referred-to class.
+# see if all attributes in a candidate identifier can find matches in the formalizer list
+# if all can be matched, this identifier is a good choice for formalization    
+def iresolve(formalizers, ident):
+    for candidate in ident:
+        for fattr in formalizers:
+            if fattr.attr.name == candidate.attrname:
+                candidate.match = True
 
-def tryresolve(attrname, refclass, phrase, noduplicate, id):
-    matched = False
-    ident = refclass.identifiers[id-1]  
-    for attr in ident.attrs:
-        if attr.name == attrname:
-            matched = True
-            print(attrname + " is matched in " + refclass.classname + " with " + str(id))
-            break
-    if not matched:
-        for attr in ident.attrs:
-            if attr.name == "ID":
-                matched = True
-                print(attrname + " is matched with ID in " + refclass.classname + " with " + str(id))
-                break
-    if not matched:
-        # heuristic (1) : if there is only one {I} identifying attribute in  the target, use it.
-        if len(ident.attrs) == 1:
-            matched = True
-            print("heuristically resolved with: " + hres.rattr.name + ", type " + hres.rattr.type + " with " + hres.rphrase)
-        else:
-            # heuristic (2) : as above, but guessing that 'Name' is special
-            for attr in ident.attrs:
-                if attr.name == "Name":
-                    matched = True
-                    print("heuristically resolved with Name: " + ", type " + hres.rattr.type + " with " + hres.rphrase)
-    return matched
+# an attribute name - match pass/fail pair
+class match_candidate:
+    def __init__(self, attrname):
+        self.attrname = attrname
+        self.match = False
 
 # an instance of a resolved referential for a referential attribute:
 # it records the 'target' class, attribute and phrase for one resolved relation.
@@ -146,20 +130,19 @@ class resolution:
         self.rattr = rattr
         self.rphrase = rphrase
         
-class formalizer:
+# gathers a list of referential attributes that must be matched in referred-to class(es)
+class formalizedassoc:
     def __init__(self, relnum):
         self.relnum = relnum
         self.rel = 0
-        self.refattrs = []
+        self.formalizers = []
         
-class formattr:
+class formalization:
     def __init__(self, attr):
         self.attr = attr
-        self.tmatch = 0
-        self.pmatch = 0
-              
+        self.resolutions = []
 
-# an instance of a binary association - which may include an associative class.           
+# represents an instance of a binary association - which may include an associative class.           
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass):
         self.rnum = rnum
@@ -289,7 +272,7 @@ class MaslOut:
                             if not found:
                                 ident = identifier(i)
                                 thisclass.identifiers.append(ident)
-                            ident.attrs.append(thisattr)
+                            ident.iattrs.append(thisattr)
                             #print("add to ident: >" + ident.identnum + "< " + thisattr.name)
                     if refs:
                         for ref in refs:
@@ -302,15 +285,15 @@ class MaslOut:
                             #print(aref.relnum)
                             thisattr.references.append(aref)
                             found = False
-                            for formr in thisclass.formalizers:
+                            for formr in thisclass.formalizedassocs:
                                 if formr.relnum == relnum:
                                     found = True
                                     break
                             if not found:
-                                formr = formalizer(relnum)
-                                thisclass.formalizers.append(formr)
-                            fattr = formattr(thisattr)
-                            formr.refattrs.append(fattr)
+                                formr = formalizedassoc(relnum)
+                                thisclass.formalizedassocs.append(formr)
+                            fattr = formalization(thisattr)
+                            formr.formalizers.append(fattr)
                             
 
                 classattrs.pop(0)  # done with this attribute line
@@ -426,9 +409,27 @@ class MaslOut:
         # The tricky issue is to find the appropriate identifier set.
         
         for c in model_class_list:
-            for formr in c.formalizers:
+            idents = c.identifiers
+            if len(idents) == 1:
+                continue
+            i = 0
+            longest = 1
+            pos = 0
+            for ident in idents:
+                l = len(ident.iattrs)
+                if l > longest:
+                    longest = l
+                    pos = i
+                i = i + 1
+            if longest > 1:
+                x = idents.pop(pos)
+                idents.insert(0, x)
+                
+        
+        for c in model_class_list:
+            for formr in c.formalizedassocs:
                 attrstr = ""
-                for fattr in formr.refattrs:
+                for fattr in formr.formalizers:
                     attrstr = attrstr + " " + fattr.attr.name
                 print("formalize " + formr.relnum + " needs: " + attrstr)
                 for r in bin_rel_list:
@@ -436,51 +437,48 @@ class MaslOut:
                         formr.rel = r
                         break
                 if r.is_associative and not r.is_reflexive:
-                    print(" associative: " + formr.relnum + " " + c.classname)
-                    tlen = len(r.tclass.identifiers)
-                    if tlen > 1:
-                        print(r.tclass.classname + " has multiple identifiers")
-                        print("-")
-                    plen = len(r.pclass.identifiers)
-                    if plen > 1:
-                        print(r.pclass.classname + " has multiple identifiers")
-                        print("-")
-                    satisfied = False
-                    done = False
-                    t_index = 1
-                    p_index = 1
-                    while not satisfied and not done:
-                    
-                        for fattr in formr.refattrs:
-                            satisfied = True
-                            fattr.tmatch = tryresolve(fattr.attr.name, r.tclass, "", False, t_index)
-                            fattr.pmatch = tryresolve(fattr.attr.name, r.pclass, "", False, p_index)
-                            if fattr.tmatch == 0 and fattr.pmatch == 0:
-                                print("No match for " + fattr.attr.name)
-                                satisfied = False
-                                if t_index < tlen:
-                                    for fattr in formr.refattrs:
-                                        fattr.tmatch = 0
-                                    t_index = t_index + 1
-                                    print("increment t_index for " + r.tclass.classname)
-                                    p_index = 1 # reset this to re-loop over second set of identifiers
-                                else:
-                                    if p_index < plen:
-                                        for fattr in formr.refattrs:
-                                            fattr.pmatch = 0
-                                        p_index = p_index + 1
-                                        print("increment p_index for " + r.pclass.classname)
-                                    else:
-                                        done = True
-                                        print("ran out of idents")
-                                    
-                    if satisfied:
-                        print("use identifiers: " +  str(r.tclass.identifiers[t_index-1].identnum) + " for " + r.tclass.classname)
-                        print("  and " + str(r.pclass.identifiers[p_index-1].identnum) + " for " + r.pclass.classname)
-                        r.tclassident = t_index
-                        r.pclassident = p_index
-                else:            
-                    print(" simple: " + formr.relnum + " " + c.classname)
+                    tclass = r.tclass
+                    for ident in tclass.identifiers:
+                        print("trying " + ident.identnum + " for " + tclass.classname)
+                        attrlist = []
+                        for iattr in ident.iattrs:
+                            cand = match_candidate(iattr.name)
+                            print(iattr.name)
+                            attrlist.append(cand)
+                        iresolve(formr.formalizers, attrlist)
+                        useident = True
+                        for candidate in attrlist:
+                            if candidate.match == False:
+                                print("mismatch " + candidate.attrname)
+                                useident = False
+                                break
+                        if useident:
+                            break
+                    print(tclass.classname + " " + ident.identnum)
+                    tident = ident
+                    pclass = r.pclass
+                    for ident in pclass.identifiers:
+                        print("trying " + ident.identnum + " for " + pclass.classname)
+                        attrlist = []
+                        for iattr in ident.iattrs:
+                            cand = match_candidate(iattr.name)
+                            print(iattr.name)
+                            attrlist.append(cand)
+                        iresolve(formr.formalizers, attrlist)
+                        useident = True
+                        for candidate in attrlist:
+                            if candidate.match == False:
+                                print("mismatch " + candidate.attrname)
+                                useident = False
+                                break
+                        if useident:
+                            break
+                    pident = ident
+                    print(pclass.classname + " " + ident.identnum)
+                               
+                            
+                            
+                        
                     
                     print("---")
 
@@ -521,7 +519,7 @@ class MaslOut:
                                                         takenlist.append(res.rattr.name)
                                         #print(takenlist)
                                         ident1 = aclass.identifiers[0]
-                                        for iattr in ident1.attrs:  # try to find an unmatched identifying attribute...
+                                        for iattr in ident1.iattrs:  # try to find an unmatched identifying attribute...
                                             candidate = iattr.name
                                             for taken in takenlist:
                                                 if iattr.name == taken:
@@ -529,7 +527,7 @@ class MaslOut:
                                                     break
                                             if not candidate == "":
                                                 #print("well, maybe: " + candidate)
-                                                for iattr in ident1.attrs:
+                                                for iattr in ident1.iattrs:
                                                     if iattr.name == candidate:
                                                         res = resolution(aclass, iattr, aphrase)
                                                         reference.resolutions.append(res)
@@ -600,7 +598,7 @@ class MaslOut:
                     continue
                 line = "  identifier is ( "
                 text_file.write("    identifier is ( ")
-                for attr in ident.attrs:
+                for attr in ident.iattrs:
                     line = line + sep + attr.name
                     text_file.write(sep + attr.name)
                     sep = ", "
