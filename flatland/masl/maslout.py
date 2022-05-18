@@ -74,8 +74,13 @@ class attr_rel_ref:  # attribute relationship reference
         # param noduplicate: do not allow false matches (i.e. other than name match) for 2nd of associative pair.
         # param identnum: the one-based index specifying which referenced identifier group to match against
         ident = refclass.identifiers[0]  # default to using the primary identifier {I}
-        if not identnum < 0:
-            ident = refclass.identifiers[identnum - 1]  # override with specified identifier
+        if identnum == "I3":
+            print("using I3 for " + refclass.classname)
+        if not identnum == "":
+            for ident in refclass.identifiers:
+                if ident.identnum == identnum:
+                    print("resolving " + attrname + " with ident " + ident.identnum)
+                    break
         for attr in ident.iattrs:
             matched = False
             if attr.name == attrname:
@@ -86,14 +91,15 @@ class attr_rel_ref:  # attribute relationship reference
         if not matched:
             for attr in ident.iattrs:
                 if attr.name == "ID":
-                    if self.resolutions == [] or not noduplicate:
+                    ltxt = refclass.classname.lower()
+                    if attrname == ltxt.capitalize():
                         self.resolutions.append(resolution(refclass, attr, phrase))
-                    matched = True
-                    print(attrname + " is matched with ID in " + refclass.classname + " with " + phrase)
+                        matched = True
+                        print(attrname + " is matched with ID in " + refclass.classname + " with " + phrase)
                     break
         if not matched:
             # heuristic (1) : if there is only one {I} identifying attribute in the target, use it.
-            if len(ident.iattrs) == 1:
+            if len(ident.iattrs) == 1 and self.resolutions == []:
                 hres = resolution(refclass, ident.iattrs[0], phrase)
                 self.resolutions.append(hres)
                 matched = True
@@ -101,7 +107,7 @@ class attr_rel_ref:  # attribute relationship reference
             else:
                 # heuristic (2) : as above, but guessing that 'Name' is special
                 for attr in ident.iattrs:
-                    if attr.name == "Name":
+                    if attr.name == "Name" and self.resolutions == []:
                         hres = resolution(refclass, attr, phrase)
                         self.resolutions.append(hres)
                         matched = True
@@ -109,10 +115,13 @@ class attr_rel_ref:  # attribute relationship reference
 
 # see if all attributes in a candidate identifier can find matches in the formalizer list
 # if all can be matched, this identifier is a good choice for formalization    
-def iresolve(formalizers, ident):
+def iresolve(formalizers, ident, cname):
     for candidate in ident:
         for fattr in formalizers:
-            if fattr.attr.name == candidate.attr.name:
+            if fattr.attr.name == candidate.attr.name: 
+                candidate.match = True
+            if fattr.attr.name == cname and candidate.attr.name == "ID":
+                print(" *** matching " + candidate.attr.name + " to class " + cname + " ID attribute")
                 candidate.match = True
                 
 # return the identifier which can match all its attributes in the formalization - or bottom out.
@@ -124,7 +133,9 @@ def matchident(formalization, refclass):
             cand = match_candidate(iattr)
             print(iattr.name)
             attrlist.append(cand)
-        iresolve(formalization, attrlist)
+        ltxt = refclass.classname.lower()
+        cname = ltxt.capitalize()
+        iresolve(formalization, attrlist, cname)
         useident = True
         for candidate in attrlist:
             if candidate.match == False:
@@ -134,6 +145,7 @@ def matchident(formalization, refclass):
         if useident:
             break
     return ident
+
 
 # an attribute name - match pass/fail pair
 class match_candidate:
@@ -177,8 +189,8 @@ class binassoc:
         self.aclass = 0
         self.is_associative = False
         self.is_reflexive = False
-        self.tclassident = -1  # identifier index for formalization, if set
-        self.pclassident = -1  # identifier index for formalization, if set
+        self.tclassident = ""  # identifier index for formalization, if set
+        self.pclassident = ""  # identifier index for formalization, if set
 
 # an instance of a super-subtype association        
 class superassoc:
@@ -186,6 +198,7 @@ class superassoc:
         self.rnum = rnum
         self.superclass = superclass
         self.subclasslist = []
+        self.classident = ""
             
 # a parser for an attribute description
 class attr_parser:
@@ -245,6 +258,8 @@ class MaslOut:
         for mclass in self.subsys.classes:
             # Get the class name from the model; remove all white space
             txt = mclass['name']
+            #ltxt = txt.lower()
+            #ctxt = ltxt.capitalize()
             cname = txt.replace(" ","")
             text_file.write("  object " + cname +";\n")
 
@@ -458,14 +473,45 @@ class MaslOut:
                 for r in bin_rel_list:
                     if formr.relnum == r.rnum:
                         formr.rel = r
+                        if r.is_associative and not r.is_reflexive: # two half-associations involved...
+                            ident = matchident(formr.formalizers, r.tclass)
+                            print(r.tclass.classname + " " + ident.identnum)
+                            r.tclassident = ident.identnum
+                            ident = matchident(formr.formalizers, r.pclass)
+                            print(r.pclass.classname + " " + ident.identnum)
+                            r.pclassident = ident.identnum
+                        else:
+                            if r.pclass == c:  # inconsistent ordering of definition
+                                print("swapping relationship sides for " + r.rnum)
+                                aclass = r.pclass
+                                aphrase = r.pphrase
+                                acond = r.pcond
+                                amult = r.pmult
+                                r.pclass = r.tclass
+                                r.pphrase = r.tphrase
+                                r.pcond = r.tcond 
+                                r.pmult = r.tmult
+                                r.tclass = aclass
+                                r.tphrase = aphrase
+                                r.tcond = acond
+                                r.tmult = amult
+                            ident = matchident(formr.formalizers, r.pclass)
+                            print(r.pclass.classname + " " + ident.identnum)
+                            r.pclassident = ident.identnum
+                        print(" --- ")
                         break
-                if r.is_associative and not r.is_reflexive: # two half-associations involved...
-                    ident = matchident(formr.formalizers, r.tclass)
-                    print(tclass.classname + " " + ident.identnum)
-                    ident = matchident(formr.formalizers, r.pclass)
-                    print(pclass.classname + " " + ident.identnum)
+                for r in sup_rel_list:
+                    if formr.relnum == r.rnum:
+                        formr.rel = r
+                        ident = matchident(formr.formalizers, r.superclass)
+                        print(r.superclass.classname + " " + ident.identnum)
+                        r.classident = ident.identnum
+                        print(" +++ ")
+                        break
+               
+                        
+                    
 
-                    print("---")
 
 
         for c in model_class_list:
@@ -482,7 +528,9 @@ class MaslOut:
                                 reference.rel = r
                                 if r.is_associative and not r.is_reflexive:
                                     print("resolving associative reference for: " + c.classname)
+                                    print("ident " + r.tclassident)
                                     reference.resolve(attr.name, r.tclass, r.tphrase, False, r.tclassident)
+                                    print("and ident " + r.pclassident)
                                     reference.resolve(attr.name, r.pclass, r.pphrase, True, r.pclassident)
                                 else:
                                     # take a guess at picking the "other end" class in this binary association
@@ -492,7 +540,7 @@ class MaslOut:
                                         #print("oops! - T&P mixed " + r.pclass.classname)
                                         aclass = r.tclass
                                         aphrase = r.tphrase
-                                    reference.resolve(attr.name, aclass, aphrase, False, -1)
+                                    reference.resolve(attr.name, aclass, aphrase, False, r.pclassident)
                                     if reference.resolutions == []:
                                         # heuristic (2) : look for an unmatched identifier in target, for this relationship
                                         #print("out of ideas for: " + c.classname + " " + attr.name + " " + r.rnum)
@@ -523,7 +571,7 @@ class MaslOut:
                                     reference.rel = r
                                     if r.superclass.classname == c.classname:
                                         print("oops! - subsuper crossed up")
-                                    reference.resolve(attr.name, r.superclass, "", False, -1)
+                                    reference.resolve(attr.name, r.superclass, "", False, r.classident)
                 if attr.type == "undefinedType":
                     attr.type = "RefAttr"
 
