@@ -56,7 +56,7 @@ class identifier:
 # the attribute of the referred-to class in the relationship
 # that supplies the value of this referential attribute.
 # An attribute may participate in formalization of more than
-# relationship.
+# one relationship.
 
 class attr_rel_ref:  # attribute relationship reference               
     def __init__(self, relnum):
@@ -69,10 +69,10 @@ class attr_rel_ref:  # attribute relationship reference
 # Note that associative class attributes (non-reflexive) will search both target classes.
 # If name matching fails, some heuristics are attempted
 # In that associative case, guard against duplication of heuristic resolution - noduplicate:True
-# param noduplicate: do not allow false matches (i.e. other than name match) for 2nd of associative pair.
-# param identnum: the one-based index specifying which referenced identifier group to match against
 
     def resolve(self, attrname, refclass, phrase, noduplicate, identnum):
+        # param noduplicate: do not allow false matches (i.e. other than name match) for 2nd of associative pair.
+        # param identnum: the one-based index specifying which referenced identifier group to match against
         ident = refclass.identifiers[0]  # default to using the primary identifier {I}
         if not identnum < 0:
             ident = refclass.identifiers[identnum - 1]  # override with specified identifier
@@ -112,13 +112,33 @@ class attr_rel_ref:  # attribute relationship reference
 def iresolve(formalizers, ident):
     for candidate in ident:
         for fattr in formalizers:
-            if fattr.attr.name == candidate.attrname:
+            if fattr.attr.name == candidate.attr.name:
                 candidate.match = True
+                
+# return the identifier which can match all its attributes in the formalization - or bottom out.
+def matchident(formalization, refclass):
+    for ident in refclass.identifiers:
+        print("trying " + ident.identnum + " for " + refclass.classname)
+        attrlist = []
+        for iattr in ident.iattrs:
+            cand = match_candidate(iattr)
+            print(iattr.name)
+            attrlist.append(cand)
+        iresolve(formalization, attrlist)
+        useident = True
+        for candidate in attrlist:
+            if candidate.match == False:
+                print("mismatch " + candidate.attr.name)
+                useident = False
+                break
+        if useident:
+            break
+    return ident
 
 # an attribute name - match pass/fail pair
 class match_candidate:
-    def __init__(self, attrname):
-        self.attrname = attrname
+    def __init__(self, attr):
+        self.attr = attr
         self.match = False
 
 # an instance of a resolved referential for a referential attribute:
@@ -408,10 +428,13 @@ class MaslOut:
         # Now attempt to resolve the referential attributes
         # The tricky issue is to find the appropriate identifier set.
         
+        
+        # when searching for best identifier, start with one with longest attribute list - most demanding!
         for c in model_class_list:
             idents = c.identifiers
-            if len(idents) == 1:
+            if len(idents) == 1:  # no choice!
                 continue
+            # ideally, a complete sort by descending number of identifying attributes... but, hey..
             i = 0
             longest = 1
             pos = 0
@@ -436,50 +459,12 @@ class MaslOut:
                     if formr.relnum == r.rnum:
                         formr.rel = r
                         break
-                if r.is_associative and not r.is_reflexive:
-                    tclass = r.tclass
-                    for ident in tclass.identifiers:
-                        print("trying " + ident.identnum + " for " + tclass.classname)
-                        attrlist = []
-                        for iattr in ident.iattrs:
-                            cand = match_candidate(iattr.name)
-                            print(iattr.name)
-                            attrlist.append(cand)
-                        iresolve(formr.formalizers, attrlist)
-                        useident = True
-                        for candidate in attrlist:
-                            if candidate.match == False:
-                                print("mismatch " + candidate.attrname)
-                                useident = False
-                                break
-                        if useident:
-                            break
+                if r.is_associative and not r.is_reflexive: # two half-associations involved...
+                    ident = matchident(formr.formalizers, r.tclass)
                     print(tclass.classname + " " + ident.identnum)
-                    tident = ident
-                    pclass = r.pclass
-                    for ident in pclass.identifiers:
-                        print("trying " + ident.identnum + " for " + pclass.classname)
-                        attrlist = []
-                        for iattr in ident.iattrs:
-                            cand = match_candidate(iattr.name)
-                            print(iattr.name)
-                            attrlist.append(cand)
-                        iresolve(formr.formalizers, attrlist)
-                        useident = True
-                        for candidate in attrlist:
-                            if candidate.match == False:
-                                print("mismatch " + candidate.attrname)
-                                useident = False
-                                break
-                        if useident:
-                            break
-                    pident = ident
+                    ident = matchident(formr.formalizers, r.pclass)
                     print(pclass.classname + " " + ident.identnum)
-                               
-                            
-                            
-                        
-                    
+
                     print("---")
 
 
