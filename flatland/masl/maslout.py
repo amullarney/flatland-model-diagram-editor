@@ -17,6 +17,9 @@ from arpeggio import visit_parse_tree, NoMatch
 from collections import namedtuple
 from flatland.masl.attr_visitor import AttrVisitor
 
+
+
+
 # A modeled class discovered in the parse of the input file.
 # These class descriptions are collected in a list.
 
@@ -26,9 +29,8 @@ class modelclass:
         self.keyletter = keyletter
         self.attrlist = []
         self.identifiers = []
-        self.identifiers.append(identifier("I"))
-        #self.is_associative = False
-        self.formalizedassocs = []
+        self.identifiers.append(identifier("I"))  # by convention, all classes have a primary identifier..
+        self.formalizedassocs = []                # a list of associations formalized for this class
 
 
 # A discovered attribute belonging to a class.
@@ -40,7 +42,7 @@ class attribute:
         self.name = attrname
         self.type = attrtype
         self.is_preferred = False  # True only if the attribute is designated as {I}
-        self.references = []       # info about relationships formalized using this attribute
+        self.references = []       # resolved references which formalize relationships using this attribute
 
 
 # One or more attributes whose values constitute an instance identifier.
@@ -124,7 +126,7 @@ def identmatch(formalizers, ident, cname):
                 print(" *** matching " + candidate.attr.name + " to class " + cname + " ID attribute")
                 candidate.match = True
                 
-# return the identifier which can match all its attributes in the formalization - or bottom out.
+# return the identifier choice which can match all its attributes in the formalization - or bottom out.
 # for each of a class's identifiers, prepare a 'candidate' list of [ attribute name,  matched ] pairs.
 # after a match attempt, test for any failed match: if any, try for another identifier.
 
@@ -149,12 +151,13 @@ def matchident(formalizers, refclass):
 
 
 # an [ attribute name - match pass/fail ] pair
-# set of these representing one referred-to class identifier is tested for match completeness
+# a set of these representing one referred-to class identifier is tested for match completeness
 
 class match_candidate:
     def __init__(self, attr):
         self.attr = attr
         self.match = False
+
 
 # an instance of a resolved referential for a referential attribute:
 # it records the 'target' class, attribute and phrase for one resolved relation.
@@ -165,8 +168,9 @@ class resolution:
         self.rattr = rattr
         self.rphrase = rphrase
         self.category = remark  # possible reporting key
+ 
         
-# a list of referential attributes that must be matched in referred-to class(es)
+# a list of referential attributes that must be matched in referred-to class(es) for one association
 
 class formalizedassoc:
     def __init__(self, relnum):
@@ -175,7 +179,7 @@ class formalizedassoc:
         self.formalizers = []  # the attributes that formalize this relationship
         
 
-# represents an instance of a binary association - which may include an associative class.           
+# a representation an instance of a binary association - which may include an associative class.           
 
 class binassoc:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass):
@@ -194,7 +198,8 @@ class binassoc:
         self.tclassident = ""  # identifier index for formalization, if set
         self.pclassident = ""  # identifier index for formalization, if set
 
-# an instance of a super-subtype association        
+
+# a representation of a super-subtype association        
 
 class superassoc:
     def __init__(self, rnum, superclass):
@@ -202,6 +207,7 @@ class superassoc:
         self.superclass = superclass
         self.subclasslist = []
         self.classident = ""
+
             
 # a parser for an attribute description
 
@@ -241,7 +247,7 @@ class MaslOut:
         # Create a Parser which accepts just an attribute description line        
         att_parser = attr_parser("attr_grammar.peg", "attrdef" )
 
-        self.logger.info("Parsing the model")
+        self.logger.info("Parsing the model for MASL output")
         # Parse the model
         try:
             self.model = ModelParser(model_file_path=self.xuml_model_path, debug=False)
@@ -262,8 +268,6 @@ class MaslOut:
         for mclass in self.subsys.classes:
             # Get the class name from the model; remove all white space
             txt = mclass['name']
-            #ltxt = txt.lower()
-            #ctxt = ltxt.capitalize()
             cname = txt.replace(" ","")
             text_file.write("  object " + cname +";\n")
 
@@ -444,7 +448,6 @@ class MaslOut:
         # Now attempt to resolve the referential attributes
         # The tricky issue is to find the appropriate identifier set.
         
-        
         # when searching for best identifier, start with one with longest attribute list - most demanding!
         for c in model_class_list:
             idents = c.identifiers
@@ -464,7 +467,8 @@ class MaslOut:
                 x = idents.pop(pos)
                 idents.insert(0, x)
                 
-        
+        # look for best referred-to class identifier for each formalized association
+                
         for c in model_class_list:
             for formr in c.formalizedassocs:
                 attrstr = ""
@@ -511,6 +515,9 @@ class MaslOut:
                         print(" +++ ")
                         break
 
+
+        # with the best identifier determined for each association, create the referential resolutions
+        
         for c in model_class_list:
             print(" Defined class: " + c.classname)
             for attr in c.attrlist:
@@ -531,7 +538,12 @@ class MaslOut:
                                     reference.resolve(attr.name, r.pclass, r.pphrase, r.pclassident)
                                 else:
                                     reference.resolve(attr.name, r.pclass, r.pphrase, r.pclassident)
+                                if reference.resolutions == []:  # not resolved: last hope...
+                                    # this would be the place to look for a single unresolved identifying attribute
+                                    print("seeking to resolve " + attr.name)
+                                    # to be addressed...
                                 break
+
                         if reference.resolutions == []:  # not resolved; may be a sub-super association
                             for r in sup_rel_list:
                                 if reference.relnum == r.rnum:
