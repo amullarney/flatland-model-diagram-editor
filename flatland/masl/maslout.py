@@ -84,7 +84,6 @@ class superassoc:
         self.classident = ""
 
 
-
 # an instance of a resolved referential for a referential attribute:
 # it records the 'target' class, attribute and phrase for one resolved relation.
 
@@ -93,7 +92,7 @@ class resolution:
         self.rclass = rclass
         self.rattr = rattr
         self.rphrase = rphrase
-        self.category = remark  # possible reporting key
+        self.category = remark  # reporting key, if other than exact name match
  
         
 # a list of referential attributes that must be matched in referred-to class(es) for one association
@@ -111,7 +110,6 @@ class match_candidate:
     def __init__(self, attr):
         self.attr = attr
         self.match = False
-
           
 
 # A resolvable reference in a formalizing referential chain:
@@ -142,40 +140,25 @@ class attr_rel_ref:  # attribute relationship reference
             for ident in refclass.identifiers:
                 if ident.identnum == identnum:
                     break
-        for attr in ident.iattrs:
-            matched = False
-            if attr.name == attrname:
-                self.resolutions.append(resolution(refclass, attr, phrase, ""))
+        matched = False
+        for idattr in ident.iattrs:
+            if idattr.name == attrname:
+                self.resolutions.append(resolution(refclass, idattr, phrase, ""))
                 matched = True
                 print(attrname + " is matched in " + refclass.classname + " with " + phrase)
                 break
         if not matched:
-            for attr in ident.iattrs:
-                if attr.name == "ID":
+            for idattr in ident.iattrs:
+                if idattr.name == "ID":
                     ltxt = refclass.classname.lower()
                     if attrname == ltxt.capitalize():
-                        self.resolutions.append(resolution(refclass, attr, phrase, "ID"))
+                        self.resolutions.append(resolution(refclass, idattr, phrase, "ID"))
                         matched = True
                         print(attrname + " is matched with referred-to ID in " + refclass.classname + " with " + phrase)
-                    break
-        if not matched:
-            # heuristic (1) : if there is only one {I} identifying attribute in the target, use it.
-            if len(ident.iattrs) == 1 and self.resolutions == []:
-                hres = resolution(refclass, ident.iattrs[0], phrase, "SingleIdent")
-                self.resolutions.append(hres)
-                matched = True
-                print("heuristically SINGLY resolved with: " + hres.rattr.name + ", type: " + hres.rattr.type + " with " + hres.rphrase)
-            else:
-                # heuristic (2) : as above, but guessing that 'Name' is special
-                for attr in ident.iattrs:
-                    if attr.name == "Name" and self.resolutions == []:
-                        hres = resolution(refclass, attr, phrase, "Name")
-                        self.resolutions.append(hres)
-                        matched = True
-                        print("heuristically resolved with Name attribute: " + " type: " + hres.rattr.type + " with " + hres.rphrase)
+                        break
 
 
-# a parser for an attribute description
+# a parser for an attribute description line
 
 class attr_parser:
     def __init__(self, grammar_file_name, root_rule_name):
@@ -214,10 +197,11 @@ def identmatch(formalizers, ident, cname):
                 
 # return the identifier choice which can match all its attributes in the formalization - or run out of choices.
 # note: the match is tested 'from' the referred-to identifier; the formalization may span two classes in associative case.
-# for each of a class's identifiers, prepare a 'candidate' list of [ attribute name,  matched ] pairs.
-# after a match attempt, test for any failed match: if any, try for another identifier.
+# for each of a class's identifiers, prepare a 'candidate' list of [attribute name, matched] pairs.
+# after a match attempt, test candidates for any failed match: if any, try for another identifier.
 
 def matchident(formalizers, refclass):
+    print(refclass.classname)
     for ident in refclass.identifiers:
         attrlist = []
         for iattr in ident.iattrs:
@@ -327,7 +311,7 @@ class MaslOut:
                             #print("add to ident: >" + ident.identnum + "< " + thisattr.name)
                     if refs:
                         for ref in refs:
-                            relnum = ref
+                            relnum = ref.replace('c','')  # remove any 'c' constraint
                             if not ref[0] == "R":
                                 if ref[0] == "O":  # OR 'relationships' are not 'associations'
                                     continue
@@ -462,10 +446,10 @@ class MaslOut:
                 n = text_file.write(");\n");
                 
                 
-        # compute the formalizing attribute lists for each association, for each class.
+        # compute the formalizing attribute lists: for each class, for each association it formalizes
         # each attribute may contribute to one or more formalized associations.
-        # build a list of associations this class must formalize.
-        # each list element is a list of the attribute(s) to be matched for the association.
+        # build a list of associations this class wants to formalize.
+        # each such list element is a list of the attribute(s) to be matched for the association.
         
         for c in model_class_list:
             for attr in c.attrlist:
@@ -487,6 +471,7 @@ class MaslOut:
         # i.e. the {In} which best matches the attributes required to formalize
                
         # when searching for best identifier, ensure longer attribute lists are tested first - more demanding!
+        # so, sort the identifier list by decreasing length of the identifier's attribute list.
         for c in model_class_list:
             idents = c.identifiers
             if len(idents) == 1:  # no choice!
@@ -494,7 +479,7 @@ class MaslOut:
             idents.sort(reverse = True, key = lambda identifier: len(identifier.iattrs) )
                 
         # look for best referred-to class identifier for each formalized association
-        # stash the identifier choice in the relationship for use in resolution.
+        # stash the identifier choice in the relationship for use in the resolution pass.
                 
         for c in model_class_list:
             for formr in c.formalizedassocs:
@@ -506,6 +491,7 @@ class MaslOut:
                 for r in binary_rel_list:
                     if formr.relnum == r.rnum:
                         formr.rel = r
+                        print(r.rnum)
                         if r.is_associative and not r.is_reflexive: # two half-associations involved...
                             ident = matchident(formr.formalizers, r.tclass)
                             print(r.tclass.classname + " " + ident.identnum)
@@ -514,7 +500,10 @@ class MaslOut:
                             print(r.pclass.classname + " " + ident.identnum)
                             r.pclassident = ident.identnum
                         else:
-                            if r.pclass == c:  # inconsistent ordering of relationship definition
+                            # flatland does not require consistent ordering of relationship definitions:
+                            # for this purpose, it is convenient to rely on which is the referred-to class.
+                            # if necessary, swich the order of the relationship 'sides'
+                            if r.pclass == c:  # the expected 'referred-to' class matches 'self'; swap
                                 print("swapping relationship sides for " + r.rnum)
                                 aclass = r.pclass
                                 aphrase = r.pphrase
@@ -569,6 +558,16 @@ class MaslOut:
                                     # this would be the place to look for a single unresolved identifying attribute
                                     print("seeking to resolve " + attr.name)
                                     # to be addressed...
+                                    if len(r.pclass.identifiers) == 1:
+                                        for formr in c.formalizedassocs:
+                                            if formr.relnum == r.rnum:
+                                                if len(formr.formalizers) == 1:
+                                                    ident = r.pclass.identifiers[0]
+                                                    iattr = ident.iattrs[0]
+                                                    print(r.rnum + " " + attr.name + " resolving to the only one: " + iattr.name)
+                                                    res = resolution(r.pclass, iattr, r.pphrase, "SingleIdent")
+                                                    reference.resolutions.append(res)
+                                            break
                                 break
 
                         if reference.resolutions == []:  # not resolved; may be a sub-super association
@@ -666,19 +665,12 @@ class MaslOut:
                 for ref in attr.references:
                     for res in ref.resolutions:
                         if res.category == "ID":
-                            print(ref.rel.rnum + ": " + c.classname + " " + attr.name)
+                            print(ref.rel.rnum + ": " + c.classname + "." + attr.name + "  matched to  " + res.rclass.classname + "." + res.rattr.name)
         print("\nThe following referentials matched a single referred-to identifying attribute (likely safe):")
         for c in model_class_list:
             for attr in c.attrlist:
                 for ref in attr.references:
                     for res in ref.resolutions:
                         if res.category == "SingleIdent":
-                            print(ref.rel.rnum + ": " + c.classname + " " + attr.name + " was matched to " + res.rattr.name)
-        print("\nThe following referentials matched a referred-to class 'Name' identifying attribute (safe?):")
-        for c in model_class_list:
-            for attr in c.attrlist:
-                for ref in attr.references:
-                    for res in ref.resolutions:
-                        if res.category == "Name":
-                            print(ref.rel.rnum + ": " + c.classname + " " + attr.name)
+                            print(ref.rel.rnum + ": " + c.classname + "." + attr.name + "  matched to  " + res.rclass.classname + "." + res.rattr.name)
                             

@@ -3,22 +3,25 @@
 // Parse a single attribute description line
 
 sp = " " // Single space
-lbrace = "{" // Left brace
-rbrace = "}" // Right brace
-comma = ',' sp* // Comma separator
-colon = ' : '
+lbrace = "{" sp* // Left brace
+rbrace = sp* "}" // Right brace
+comma = sp* ',' sp* // Comma separator
+colon = ':'
 star = '*' // asterisk
+slash = '/' // slash - prefix for derived attribute
+anything = r'.*' // collects attribute initialization - unformatted
+default = sp* '=' sp* anything
 delim = r'[ _]' // Delimiter used inside of names
 ident = r'I[1-9]?[0-9]*' star? // attribute serves for identification
-rnum = r'U?O?R[1-9][0-9]*' // Relationship number
+rnum = r'U?O?R[1-9][0-9]*c?' // Relationship number
 lword = r'[a-z][a-z]*' // Lower case only word (used in relationship phrase)
 iword = r'[A-Z][A-Za-z0-9]*' // Initial cap word (used in Class and Subsystem names)
 aword = r'[A-Za-z][A-Za-z0-9]*' // any word (used in attribute type names)
 idents = ident (comma ident)* comma? // one or more 'I'+'n' 
 referentials = rnum (comma rnum)*  // one or more relationship names
-attrname = iword (delim lword)* // Only first word has initial cap
-attrtype =  colon aword (delim aword)*  //
-attrinfo = sp+ lbrace idents? sp* referentials? rbrace //
+attrname = slash? iword (delim lword)* // Only first word has initial cap
+attrtype =  sp* colon sp* aword (delim aword)* default? //
+attrinfo = sp* lbrace idents? sp* referentials? rbrace //
 attr_line = attrname attrtype? attrinfo?  // attribute description line
 icaps_name = iword (delim iword)*  // A name using initial caps only
 
