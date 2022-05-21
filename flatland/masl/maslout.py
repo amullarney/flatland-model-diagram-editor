@@ -311,11 +311,11 @@ class MaslOut:
                             #print("add to ident: >" + ident.identnum + "< " + thisattr.name)
                     if refs:
                         for ref in refs:
-                            relnum = ref.replace('c','')  # remove any 'c' constraint
+                            # ORx are not true associations - see 'Ordinal' relationship discussion
+                            # URx are deprecated
                             if not ref[0] == "R":
-                                if ref[0] == "O":  # OR 'relationships' are not 'associations'
-                                    continue
-                                relnum = ref[1:]
+                                continue
+                            relnum = ref.replace('c','')  # remove any 'c' constraint
                             aref = attr_rel_ref(relnum)
                             thisattr.references.append(aref)
 
@@ -404,8 +404,8 @@ class MaslOut:
                             assoc_class = c
                             bin_assoc_class.aclass = assoc_class
                             bin_assoc_class.is_associative = True
-                            break
                             n = text_file.write(" using " + bin_assoc_class.aclass.classname)
+                            break
 
                 n = text_file.write(";\n")
 
@@ -554,20 +554,19 @@ class MaslOut:
                                     reference.resolve(attr.name, r.pclass, r.pphrase, r.pclassident)
                                 else:
                                     reference.resolve(attr.name, r.pclass, r.pphrase, r.pclassident)
-                                if reference.resolutions == []:  # not resolved: last hope...
-                                    # this would be the place to look for a single unresolved identifying attribute
-                                    print("seeking to resolve " + attr.name)
-                                    # to be addressed...
-                                    if len(r.pclass.identifiers) == 1:
-                                        for formr in c.formalizedassocs:
-                                            if formr.relnum == r.rnum:
-                                                if len(formr.formalizers) == 1:
-                                                    ident = r.pclass.identifiers[0]
-                                                    iattr = ident.iattrs[0]
-                                                    print(r.rnum + " " + attr.name + " resolving to the only one: " + iattr.name)
-                                                    res = resolution(r.pclass, iattr, r.pphrase, "SingleIdent")
-                                                    reference.resolutions.append(res)
-                                            break
+                                    if reference.resolutions == []:  # not resolved: last hope...
+                                        # look for a single unresolved identifying attribute where only one is required..
+                                        print("seeking to resolve " + attr.name)
+                                        if len(r.pclass.identifiers) == 1:
+                                            for formr in c.formalizedassocs:
+                                                if formr.relnum == r.rnum:
+                                                    if len(formr.formalizers) == 1:
+                                                        ident = r.pclass.identifiers[0]
+                                                        iattr = ident.iattrs[0]
+                                                        print(r.rnum + " " + attr.name + " resolving to the only one: " + iattr.name)
+                                                        res = resolution(r.pclass, iattr, r.pphrase, "SingleIdent")
+                                                        reference.resolutions.append(res)
+                                                    break
                                 break
 
                         if reference.resolutions == []:  # not resolved; may be a sub-super association
