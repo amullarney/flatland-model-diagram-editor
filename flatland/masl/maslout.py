@@ -30,7 +30,7 @@ class modelclass:
         self.attrlist = []
         self.identifiers = []
         self.identifiers.append(identifier("I"))  # by convention, all classes have a primary identifier..
-        self.formalizedassocs = []                # a list of associations formalized for this class
+        self.formalizations = []                # a list of associations formalized for this class
 
 
 # A discovered attribute belonging to a class.
@@ -97,7 +97,7 @@ class resolution:
         
 # a list of referential attributes that must be matched in referred-to class(es) for one association
 
-class formalizedassoc:
+class formalization:
     def __init__(self, relnum):
         self.relnum = relnum
         self.rel = 0
@@ -201,7 +201,6 @@ def identmatch(formalizers, ident, cname):
 # after a match attempt, test candidates for any failed match: if any, try for another identifier.
 
 def matchident(formalizers, refclass):
-    print(refclass.classname)
     for ident in refclass.identifiers:
         attrlist = []
         for iattr in ident.iattrs:
@@ -456,13 +455,13 @@ class MaslOut:
                 for ref in attr.references:
                     relnum = ref.relnum
                     found = False
-                    for formr in c.formalizedassocs:
+                    for formr in c.formalizations:
                         if formr.relnum == relnum:
                             found = True
                             break
                     if not found:
-                        formr = formalizedassoc(relnum)
-                        c.formalizedassocs.append(formr)
+                        formr = formalization(relnum)
+                        c.formalizations.append(formr)
                     formr.formalizers.append(attr)
         
                 
@@ -482,7 +481,7 @@ class MaslOut:
         # stash the identifier choice in the relationship for use in the resolution pass.
                 
         for c in model_class_list:
-            for formr in c.formalizedassocs:
+            for formr in c.formalizations:
                 attrstr = ""
                 for fattr in formr.formalizers:
                     attrstr = attrstr + " " + fattr.name
@@ -491,7 +490,6 @@ class MaslOut:
                 for r in binary_rel_list:
                     if formr.relnum == r.rnum:
                         formr.rel = r
-                        print(r.rnum)
                         if r.is_associative and not r.is_reflexive: # two half-associations involved...
                             ident = matchident(formr.formalizers, r.tclass)
                             print(r.tclass.classname + " " + ident.identnum)
@@ -520,7 +518,6 @@ class MaslOut:
                             ident = matchident(formr.formalizers, r.pclass)
                             #print(r.pclass.classname + " " + ident.identnum)
                             r.pclassident = ident.identnum
-                        print(" --- ")
                         break
                 for r in subsup_rel_list:
                     if formr.relnum == r.rnum:
@@ -528,7 +525,6 @@ class MaslOut:
                         ident = matchident(formr.formalizers, r.superclass)
                         #print(r.superclass.classname + " " + ident.identnum)
                         r.classident = ident.identnum
-                        print(" +++ ")
                         break
 
 
@@ -558,7 +554,7 @@ class MaslOut:
                                         # look for a single unresolved identifying attribute where only one is required..
                                         print("seeking to resolve " + attr.name)
                                         if len(r.pclass.identifiers) == 1:
-                                            for formr in c.formalizedassocs:
+                                            for formr in c.formalizations:
                                                 if formr.relnum == r.rnum:
                                                     if len(formr.formalizers) == 1:
                                                         ident = r.pclass.identifiers[0]
