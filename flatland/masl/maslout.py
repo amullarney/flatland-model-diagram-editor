@@ -105,6 +105,8 @@ class formalization:
         self.rel = 0
         self.formalizers = []  # the attributes that formalize this relationship
 
+    # attempt to match each attribute in the formalizer list with an an attribute in the chosen identifier
+
     def resolve(self, refclass, phrase, identnum):
         ident = refclass.identifiers[0]
         if not identnum == "":
@@ -115,33 +117,39 @@ class formalization:
             matched = False
             for iattr in ident.iattrs:
                 if rattr.name == iattr.name:
-                    print("formalization match: " + rattr.name + " to " + iattr.name + " in " + refclass.classname)
+                    #print("formalization match: " + rattr.name + " to " + iattr.name + " in " + refclass.classname)
                     rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, ""))
                     matched = True
                     break
             if not matched:
+                # if the attribute name matches the referred-to class and it has an 'ID' attribute, consider matched.
                 for iattr in ident.iattrs:
                     if iattr.name == "ID":
                         ltxt = refclass.classname.lower()
                         if rattr.name == ltxt.capitalize():
-                            print("formalization match: " + rattr.name + " to ID in "  + refclass.classname)
+                            #print("formalization match: " + rattr.name + " to ID in "  + refclass.classname)
                             rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, "ID"))
-                            match = True
+                            matched = True
                             break
                             
+    # look for a single unmatched referential; 
+    # if found, look for a single unmatched identifying attribute to be considered a match.
+    
     def resolve2(self, refclass, phrase, identnum):                            
         ident = refclass.identifiers[0]
         if not identnum == "":
             for ident in refclass.identifiers:
                 if ident.identnum == identnum:
                     break
+
+        # look for unresolved attributes in the formalizer list.
         n = 0
         for rattr in self.formalizers:
             if rattr.resolutions == []:  # not resolved
                 n = n + 1
                 urattr = rattr
 
-        if n == 1:  # exactly 1 unresolved referential
+        if n == 1:  # exactly 1 unresolved referential - try to match it.
             n = 0
             for iattr in ident.iattrs:
                 found = False
@@ -564,6 +572,9 @@ class MaslOut:
                         if r.is_associative and not r.is_reflexive: # two half-associations involved...
                             formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
                             formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
+                            # after both sides have had a chance to resolve, look for any unmatched.
+                            formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
+                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
                         else:
                             formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
                             formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
