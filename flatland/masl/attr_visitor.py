@@ -52,7 +52,7 @@ class AttrVisitor(PTNodeVisitor):
 
     def visit_attrtype(self, node, children):
         concat = ''.join(children)
-        name = concat.replace(" ","")
+        name = concat.replace(" ","_")
         return {"atype": name}
 
     def visit_attrinfo(self, node, children):
@@ -66,7 +66,7 @@ class AttrVisitor(PTNodeVisitor):
 
     def visit_attrname(self, node, children):
         concat = ''.join(children)
-        name = concat.replace(" ","")
+        name = concat.replace(" ","_")
         return {"aname": name}
 
     # Root

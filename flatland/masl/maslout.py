@@ -296,7 +296,7 @@ class MaslOut:
         for aclass in self.subsys.classes:
             # Get the class name from the model; remove all white space
             txt = aclass['name']
-            classname = txt.replace(" ","")
+            classname = txt.replace(" ","_")
             text_file.write("  object " + classname +";\n")
 
             # Optional keyletter (class name abbreviation) after the class name?
@@ -377,7 +377,7 @@ class MaslOut:
             if not 'superclass' in r.keys():  # treat binary associations here..
                 tside = r['t_side']
                 cn = tside['cname']
-                tc = cn.replace(" ","")
+                tc = cn.replace(" ","_")
 
                 m = str(tside['mult'])
                 tcond = False
@@ -395,7 +395,7 @@ class MaslOut:
                
                 pside = r['p_side']
                 cn = pside['cname']
-                pc = cn.replace(" ","")
+                pc = cn.replace(" ","_")
                 
                 m = str(pside['mult'])
                 pcond = False
@@ -431,7 +431,7 @@ class MaslOut:
                 aclass = 0
                 aclass = r.get('assoc_cname')
                 if aclass:
-                    acname = aclass.replace(" ","")
+                    acname = aclass.replace(" ","_")
                     #print(numtxt + " associative using " + acname)
                     for c in model_class_list:
                         if c.classname == acname:
@@ -446,7 +446,7 @@ class MaslOut:
             else:  # this is a sub-supertype association
             
                 s = r['superclass']
-                cn = s.replace(" ","")
+                cn = s.replace(" ","_")
                 n = text_file.write(cn + " is_a (")
                 for c in model_class_list:
                     if c.classname == cn:
@@ -456,7 +456,7 @@ class MaslOut:
                 subclasses = r['subclasses']
                 sep = ""
                 for s in subclasses:
-                    cn = s.replace(" ","")
+                    cn = s.replace(" ","_")
                     n = text_file.write(sep + cn)
                     sep = ", "
                     for aclass in model_class_list:
