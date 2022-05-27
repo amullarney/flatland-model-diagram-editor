@@ -117,8 +117,8 @@ class formalization:
             matched = False
             for iattr in ident.iattrs:
                 if rattr.name == iattr.name:
-                    #print("formalization match: " + rattr.name + " to " + iattr.name + " in " + refclass.classname)
-                    rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, ""))
+                    print(self.relnum + ": formalization match: " + rattr.name + " to " + iattr.name + " in " + refclass.classname)
+                    rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, "matched"))
                     matched = True
                     break
             if not matched:
@@ -127,7 +127,7 @@ class formalization:
                     if iattr.name == "ID":
                         ltxt = refclass.classname.lower()
                         if rattr.name == ltxt.capitalize():
-                            #print("formalization match: " + rattr.name + " to ID in "  + refclass.classname)
+                            #print(self.relnum + ": formalization match: " + rattr.name + " to ID in "  + refclass.classname)
                             rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, "ID"))
                             matched = True
                             break
@@ -153,17 +153,17 @@ class formalization:
             n = 0
             for iattr in ident.iattrs:
                 found = False
-                print("checking " + iattr.name)
                 for rattr in self.formalizers:
                     for res in rattr.resolutions:
                         if res.rattr == iattr:
                             found = True
                             break
                 if not found:
+                    print("found unmatched ident: " + iattr.name)
                     uiattr = iattr
                     n = n + 1
             if n == 1:
-                print("matching single unmatched " + urattr.name + " to " + uiattr.name + " in " + refclass.classname)
+                print(self.relnum + ": matching single unmatched " + urattr.name + " to " + uiattr.name + " in " + refclass.classname)
                 urattr.resolutions.append(resolution(refclass, uiattr, self.relnum, phrase, "SingleIdent"))
                 
         
@@ -666,13 +666,13 @@ class MaslOut:
             for formr in c.formalizations:
                 for attr in formr.formalizers:
                     for res in attr.resolutions:
-                        if res.category == "ID":
-                            print(formr.relnum + ": " + c.classname + "." + attr.name + "  matched to  " + res.rclass.classname + "." + res.rattr.name)
+                        if res.rnum == formr.relnum and res.category == "ID":
+                            print(res.rnum + ": " + c.classname + "." + attr.name + "  ID matched to  " + res.rclass.classname + "." + res.rattr.name)
         print("\nThe following referentials matched a single referred-to identifying attribute (likely safe):")
         for c in model_class_list:
             for formr in c.formalizations:
                 for attr in formr.formalizers:
                     for res in attr.resolutions:
-                        if res.category == "SingleIdent":
-                            print(formr.relnum + ": " + c.classname + "." + attr.name + "  matched to  " + res.rclass.classname + "." + res.rattr.name)
+                        if res.rnum == formr.relnum and res.category == "SingleIdent":
+                            print(res.rnum + ": " + c.classname + "." + attr.name + "  singly matched to  " + res.rclass.classname + "." + res.rattr.name)
                             
