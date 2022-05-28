@@ -320,6 +320,8 @@ class MaslOut:
                 attrtype = aline.get('atype')
                 if not attrtype:
                     attrtype = "undefinedType"  # default.. for now
+                else:
+                    attrtype = attrtype + "_t"
 
                 thisattr = attribute(attrname, attrtype)
                 thisclass.attrlist.append(thisattr)
@@ -621,6 +623,7 @@ class MaslOut:
                         classname = referred.classname
                         attname = refattr.name
                         #atttype = refattr.type # don't bother with this
+                        phrase = ""
                         if not res.rphrase == "":
                             phrase = "." + res.rphrase
                         #rel = ref.rel
