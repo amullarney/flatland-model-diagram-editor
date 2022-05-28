@@ -52,7 +52,7 @@ class AttrVisitor(PTNodeVisitor):
 
     def visit_attrtype(self, node, children):
         concat = ''.join(children)
-        name = concat.replace(" ","_")
+        name = concat.replace(" ","")
         return {"atype": name}
 
     def visit_attrinfo(self, node, children):

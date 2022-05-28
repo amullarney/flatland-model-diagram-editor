@@ -27,10 +27,10 @@ class modelclass:
     def __init__(self, classname, keyletter):
         self.classname = classname
         self.keyletter = keyletter
-        self.attrlist = []
-        self.identifiers = []
+        self.attrlist = []                        # list of discovered attributes
+        self.identifiers = []                     # one or more denoted attributes
         self.identifiers.append(identifier("I"))  # by convention, all classes have a primary identifier..
-        self.formalizations = []                # a list of associations formalized for this class
+        self.formalizations = []                  # a list of associations formalized for this class
 
 
 # A discovered attribute belonging to a class.
@@ -44,6 +44,7 @@ class attribute:
         self.is_preferred = False  # True only if the attribute is designated as {I}
         self.references = []       # references which formalize relationships using this attribute
         self.resolutions = []      # resolved referential linkage
+        self.synthtype = False     # missing type name is synthesized from attribute/class name
 
 
 # A collection of one or more attributes whose values constitute an instance identifier.
@@ -51,13 +52,13 @@ class attribute:
        
 class identifier:
     def __init__(self, identnum):
-        self.identnum = identnum  # the 'number' of the identifier
+        self.identnum = identnum  # the 'number' of the identifier: e.g. I / I2 /..
         self.iattrs = []           # a list of contributing attributes
 
 
 # a representation an instance of a binary association - which may include an associative class.           
 
-class binassoc:
+class binary_association:
     def __init__(self, rnum, tphrase, tcond, tmult, tclass, pphrase, pcond, pmult, pclass):
         self.rnum = rnum
         self.tphrase = tphrase
@@ -77,7 +78,7 @@ class binassoc:
 
 # a representation of a super-subtype association        
 
-class superassoc:
+class subsuper_association:
     def __init__(self, rnum, superclass):
         self.rnum = rnum
         self.superclass = superclass
@@ -253,6 +254,17 @@ def matchident(formalizers, refclass):
     if not useident:
         ident = refclass.identifiers[0]  # no good match; use primary identifier
     return ident
+    
+
+# find class instance from class name
+
+def getclassinstance(argname):
+    for c in model_class_list:
+        if c.classname == argname:
+            break
+    return c
+
+model_class_list = []        
 
 
 # The heart of the matter:
@@ -292,7 +304,6 @@ class MaslOut:
         text_file = open(path, "w")
         n = text_file.write("domain " + domain + " is\n")
 
-        model_class_list = []        
         for aclass in self.subsys.classes:
             # Get the class name from the model; remove all white space
             txt = aclass['name']
@@ -321,6 +332,10 @@ class MaslOut:
                 if not attrtype:
                     attrtype = "undefinedType"  # default.. for now
                 else:
+                    suffix = "ID"
+                    if attrtype.endswith(suffix):
+                       attrstrip = attrtype[:-len(suffix)]
+                       attrtype = attrstrip
                     attrtype = attrtype + "_t"
 
                 thisattr = attribute(attrname, attrtype)
@@ -415,13 +430,10 @@ class MaslOut:
                 
                 tclass = 0
                 pclass = 0
-                for c in model_class_list:
-                    if c.classname == tc:
-                        tclass = c
-                    if c.classname == pc:
-                        pclass = c
+                tclass = getclassinstance(tc)
+                pclass = getclassinstance(pc)
 
-                bin_assoc_class = binassoc(rnum, tp, tcond, tmult, tclass, pp, pcond, pmult, pclass)
+                bin_assoc_class = binary_association(rnum, tp, tcond, tmult, tclass, pp, pcond, pmult, pclass)
                 binary_rel_list.append(bin_assoc_class)
 
                 if tclass == pclass:
@@ -430,18 +442,15 @@ class MaslOut:
                 n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
                 n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
                 
-                aclass = 0
-                aclass = r.get('assoc_cname')
-                if aclass:
-                    acname = aclass.replace(" ","_")
+                associator = 0
+                associator = r.get('assoc_cname')
+                if associator:
+                    acname = associator.replace(" ","_")
                     #print(numtxt + " associative using " + acname)
-                    for c in model_class_list:
-                        if c.classname == acname:
-                            assoc_class = c
-                            bin_assoc_class.aclass = assoc_class
-                            bin_assoc_class.is_associative = True
-                            n = text_file.write(" using " + bin_assoc_class.aclass.classname)
-                            break
+                    assoc_class = getclassinstance(acname)
+                    bin_assoc_class.aclass = assoc_class
+                    bin_assoc_class.is_associative = True
+                    n = text_file.write(" using " + bin_assoc_class.aclass.classname)
 
                 n = text_file.write(";\n")
 
@@ -449,36 +458,33 @@ class MaslOut:
             
                 s = r['superclass']
                 cn = s.replace(" ","_")
-                n = text_file.write(cn + " is_a (")
-                for c in model_class_list:
-                    if c.classname == cn:
-                        break
-                saclass = superassoc(rnum, c)
+                superclass = getclassinstance(cn)
+                saclass = subsuper_association(rnum, superclass)
                 subsup_rel_list.append(saclass)
                 subclasses = r['subclasses']
                 sep = ""
+                n = text_file.write(cn + " is_a (")
                 for s in subclasses:
                     cn = s.replace(" ","_")
                     n = text_file.write(sep + cn)
                     sep = ", "
-                    for aclass in model_class_list:
-                        if aclass.classname == cn:
-                            saclass.subclasslist.append(aclass)
-                            for superattr in c.identifiers[0].iattrs:
-                                if superattr.name == "ID":
-                                    continue
-                                found = False
-                                for subattr in aclass.attrlist:
-                                    if subattr.name == superattr.name:
-                                        found = True
-                                        break
-                                if not found:
-                                    newattr = attribute(superattr.name, superattr.type)
-                                    newattr.references.append(attr_rel_ref(rnum))
-                                    aclass.attrlist.append(newattr)
-                                    print("added " + newattr.name + " to " + aclass.classname + " for " + rnum)
-                                    
-                            break
+                    subclass = getclassinstance(cn)
+                    saclass.subclasslist.append(subclass)
+
+                    # propagate any missing primary identifiers to subtype, denoting them as referential
+                    for superattr in superclass.identifiers[0].iattrs:
+                        if superattr.name == "ID":
+                            continue  # not this one - the subtype has to have an primary identifier
+                        found = False
+                        for subattr in subclass.attrlist:
+                            if subattr.name == superattr.name:
+                                found = True
+                                break
+                        if not found:
+                            newattr = attribute(superattr.name, superattr.type)
+                            newattr.references.append(attr_rel_ref(rnum))
+                            subclass.attrlist.append(newattr)
+                            #print("added " + newattr.name + " to " + subclass.classname + " for " + rnum)
                 n = text_file.write(");\n");
                 
                 
@@ -537,7 +543,7 @@ class MaslOut:
                         else:
                             # flatland does not require consistent ordering of relationship definitions:
                             # for this purpose, it is convenient to rely on which is the referred-to class.
-                            # if necessary, swich the order of the relationship 'sides'
+                            # if necessary, switch the order of the relationship 'sides'
                             if r.pclass == c:  # the expected 'referred-to' class matches 'self'; swap
                                 print("swapping relationship sides for " + r.rnum)
                                 aclass = r.pclass
@@ -564,9 +570,8 @@ class MaslOut:
                         r.classident = ident.identnum
                         break
 
-
-
-
+        # now add referential resolution instances to each attribute of every formalizer
+        
         for c in model_class_list:
             for formr in c.formalizations:
                 for r in binary_rel_list:
@@ -586,9 +591,6 @@ class MaslOut:
                         formalization.resolve(formr, r.superclass, "", r.classident)
                         formalization.resolve2(formr, r.superclass, "", r.classident)
                         break
-
-
-
         
 
         """Output class definitions"""
@@ -602,41 +604,47 @@ class MaslOut:
             print("  object ", cname, " is")
             text_file.write("  object "+ cname + " is\n")
             
-            for a in c.attrlist:
+            for attr in c.attrlist:
                 p = ""
-                if a.is_preferred:
+                if attr.is_preferred:
                     p = " preferred "
-                if not a.references:
-                    print("    " + a.name + " : " + p + a.type)
-                    text_file.write("    " + a.name + " : " + p + a.type + ";\n")
+                if not attr.references:  # not a referential attribute
+                    typ = attr.type
+                    if typ == "undefinedType":  # attempt to type correctly
+                        tlist = []
+                        if attr.name == "ID" or attr.name == "Name":
+                            tlist = c.classname.split("_")
+                        else:
+                            tlist = attr.name.split("_")
+                        tname = ''
+                        for titem in tlist:
+                            tname = tname + titem.capitalize()
+                        typ = tname + "_t"
+                        attr.synthtype = True
+                        attr.type = typ
+                    print("    " + attr.name + " : " + p + typ)
+                    text_file.write("    " + attr.name + " : " + p + typ + ";\n")
                 else:
-                    print("    " + a.name + " : " + p + "referential ( ")
-                    text_file.write("    " + a.name + " : " + p + "referential ( ")
+                    print("    " + attr.name + " : " + p + "referential ( ")
+                    text_file.write("    " + attr.name + " : " + p + "referential ( ")
                     sep = ""
-                    classname = "Noclass"
-                    attname = "Undefined"
-                    atttype = "RefAttr"
                     phrase = ""
-                    for res in a.resolutions:
-                        referred = res.rclass
-                        refattr = res.rattr
-                        classname = referred.classname
-                        attname = refattr.name
-                        #atttype = refattr.type # don't bother with this
+                    for res in attr.resolutions:
+                        classname = res.rclass.classname
+                        attname = res.rattr.name
                         phrase = ""
                         if not res.rphrase == "":
                             phrase = "." + res.rphrase
-                        #rel = ref.rel
                         rnum = res.rnum
-                        print("   " + rnum + phrase  + "." + classname + "." + attname)
+                        print("   " + rnum + phrase  + "." + classname + "." + attname + ")")
                         n = text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
                         sep = ", "
-                    text_file.write(" ) " + atttype + ";\n")
+                    text_file.write(" ) " +  "RefAttr;\n")
 
             # output identifier groups for all non-preferred
             
             for ident in c.identifiers:
-                sep = ''
+                sep = ""
                 if ident.identnum == "I":  # skip this group of 'preferred' identifiers
                     continue
                 line = "  identifier is ( "
@@ -648,9 +656,9 @@ class MaslOut:
                 text_file.write(" );\n")
                 print(line)
             print("  end object;")
-            text_file.write("  end object;\n")
             keyletter = c.keyletter
             print("pragma key letter ( ",'"' + keyletter + '"'," );\n")
+            n = text_file.write("  end object;\n")
             n = text_file.write("pragma key_letter ( "'"' + keyletter + '"'" );\n\n")
 
         text_file.write("end domain;\n")
@@ -678,4 +686,9 @@ class MaslOut:
                     for res in attr.resolutions:
                         if res.rnum == formr.relnum and res.category == "SingleIdent":
                             print(res.rnum + ": " + c.classname + "." + attr.name + "  singly matched to  " + res.rclass.classname + "." + res.rattr.name)
+        print("\nThe following attributes have been heuristically typed:")
+        for c in model_class_list:
+             for attr in c.attrlist:
+                 if attr.synthtype:
+                     print(c.classname + "." + attr.name + " has been given type: " + attr.type)
                             
