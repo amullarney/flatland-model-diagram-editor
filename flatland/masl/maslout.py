@@ -76,7 +76,7 @@ class binary_association:
         self.pclassident = ""  # identifier index for formalization, if set
 
 
-# a representation of a super-subtype association        
+# a representation of a subtype-supertype association        
 
 class subsuper_association:
     def __init__(self, rnum, superclass):
@@ -106,7 +106,7 @@ class formalization:
         self.rel = 0
         self.formalizers = []  # the attributes that formalize this relationship
 
-    # attempt to match each attribute in the formalizer list with an an attribute in the chosen identifier
+    # attempt to match each attribute in the formalizer list with an an attribute from the chosen identifier
 
     def resolve(self, refclass, phrase, identnum):
         ident = refclass.identifiers[0]
@@ -114,6 +114,7 @@ class formalization:
             for ident in refclass.identifiers:
                 if ident.identnum == identnum:
                     break
+        # look for an exact attribute name match in formalizer and referred-to class:
         for rattr in self.formalizers:
             matched = False
             for iattr in ident.iattrs:
@@ -123,17 +124,16 @@ class formalization:
                     matched = True
                     break
             if not matched:
-                # if the attribute name matches the referred-to class and it has an 'ID' attribute, consider matched.
+                # if the attribute name 'matches' the referred-to class-name which has an 'ID' attribute, consider matched.
                 for iattr in ident.iattrs:
                     if iattr.name == "ID":
-                        ltxt = refclass.classname.lower()
-                        if rattr.name == ltxt.capitalize():
+                        if rattr.name == attributize(refclass.classname):
                             #print(self.relnum + ": formalization match: " + rattr.name + " to ID in "  + refclass.classname)
                             rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, "ID"))
                             matched = True
                             break
                             
-    # look for a single unmatched referential; 
+    # second attempt: look for a single unmatched referential; 
     # if found, look for a single unmatched identifying attribute to be considered a match.
     
     def resolve2(self, refclass, phrase, identnum):                            
@@ -142,7 +142,6 @@ class formalization:
             for ident in refclass.identifiers:
                 if ident.identnum == identnum:
                     break
-
         # look for unresolved attributes in the formalizer list.
         n = 0
         for rattr in self.formalizers:
@@ -225,7 +224,7 @@ def identmatch(formalizers, ident, cname):
         for fattr in formalizers:
             if fattr.name == candidate.attr.name: 
                 candidate.match = True
-            if fattr.name == cname and candidate.attr.name == "ID":
+            if fattr.name == cname and candidate.attr.name == "ID":  # this is a 'special' case
                 print(" *** matching " + candidate.attr.name + " to class " + cname + " ID attribute")
                 candidate.match = True
                 
@@ -240,9 +239,7 @@ def matchident(formalizers, refclass):
         for iattr in ident.iattrs:
             candidate = match_candidate(iattr)
             attrlist.append(candidate)
-        ltxt = refclass.classname.lower()
-        cname = ltxt.capitalize()
-        identmatch(formalizers, attrlist, cname)
+        identmatch(formalizers, attrlist, attributize(refclass.classname))
         useident = True
         for candidate in attrlist:
             if candidate.match == False:
@@ -263,18 +260,31 @@ def getclassinstance(argname):
         if c.classname == argname:
             break
     return c
+    
 
-model_class_list = []        
+# format a class name to follow attribute naming convention
+
+def attributize(argname):
+        ltxt = argname.lower()
+        return ltxt.capitalize()
+
+
+# class and relationship lists
+
+model_class_list = []    
+binary_rel_list = []
+subsup_rel_list = []
 
 
 # The heart of the matter:
 
 # This class's one and only method uses the Flatland parser to discover model classes and associations.
 # MASL output is generated along the way in some cases: see text_file.write()
-# Classes are discovered; their attribute text blocks are supplementally parsed for details;
-# Associations are discovered and linked to their classes;
-# Resolution of referential links is attempted:
-# - this involves some work with class identifiers and referential attributes
+# 1. Classes are discovered; their attribute text blocks are supplementally parsed for details;
+# 2. Associations are discovered and linked to their classes;
+# 3. Formalizing attribute sets are constructed for each association.
+# 4. Referred-to identifier choices are evaluated for best referential resolution.
+# 5. Resolution of referential links is attempted, adding resolution data for each attribute.
 
 class MaslOut:
 
@@ -302,7 +312,7 @@ class MaslOut:
         print("Generating MASL domain definitions for " + domain)
         path = domain.replace(" ","") +".mod"
         text_file = open(path, "w")
-        n = text_file.write("domain " + domain + " is\n")
+        text_file.write("domain " + domain + " is\n")
 
         for aclass in self.subsys.classes:
             # Get the class name from the model; remove all white space
@@ -326,12 +336,13 @@ class MaslOut:
                 result = visit_parse_tree(attr_tree, AttrVisitor(debug=False))
                 aline = {}
                 for x in result:
-                    aline.update(x)
+                    aline.update(x)  # 'gather' child node data
                 attrname = aline['aname']
                 attrtype = aline.get('atype')
                 if not attrtype:
-                    attrtype = "undefinedType"  # default.. for now
+                    attrtype = "undefinedType"  # default.. to be tested for later
                 else:
+                    # attempt to follow convention in forming attribute type name
                     suffix = "ID"
                     if attrtype.endswith(suffix):
                        attrstrip = attrtype[:-len(suffix)]
@@ -340,6 +351,8 @@ class MaslOut:
 
                 thisattr = attribute(attrname, attrtype)
                 thisclass.attrlist.append(thisattr)
+                
+                # gather auxiliary attribute information - nominated as identifier? - formalizer?
                 
                 info = aline.get('info')
                 if info:
@@ -377,9 +390,6 @@ class MaslOut:
         # Create two lists of association data class types - binary and sub-super
         # Following Flatland convention, binary associations have 't' and 'p' 'sides'
 
-        binary_rel_list = []
-        subsup_rel_list = []
-        
         for r in self.subsys.rels:  # for each discovered relationship..
             #print(r)
             numtxt = r['rnum']
@@ -389,12 +399,12 @@ class MaslOut:
                     continue  # these are not formalizable associations: 
                               # see https://github.com/modelint/shlaer-mellor-metamodel/wiki/Ordinal-Relationship
                 rnum = numtxt[1:]  # strip any U prefixes
-            n = text_file.write("relationship " + rnum + " is ")
+            text_file.write("relationship " + rnum + " is ")
 
             if not 'superclass' in r.keys():  # treat binary associations here..
                 tside = r['t_side']
-                cn = tside['cname']
-                tc = cn.replace(" ","_")
+                cname = tside['cname']
+                tc = cname.replace(" ","_")
 
                 m = str(tside['mult'])
                 tcond = False
@@ -411,8 +421,8 @@ class MaslOut:
                 tp = txt.replace(" ","_")
                
                 pside = r['p_side']
-                cn = pside['cname']
-                pc = cn.replace(" ","_")
+                cname = pside['cname']
+                pc = cname.replace(" ","_")
                 
                 m = str(pside['mult'])
                 pcond = False
@@ -439,8 +449,10 @@ class MaslOut:
                 if tclass == pclass:
                     bin_assoc_class.is_reflexive = True
 
-                n = text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
-                n = text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
+                text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
+                text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
+                
+                # check for a named associative class for this relationship
                 
                 associator = 0
                 associator = r.get('assoc_cname')
@@ -450,28 +462,27 @@ class MaslOut:
                     assoc_class = getclassinstance(acname)
                     bin_assoc_class.aclass = assoc_class
                     bin_assoc_class.is_associative = True
-                    n = text_file.write(" using " + bin_assoc_class.aclass.classname)
-
-                n = text_file.write(";\n")
+                    text_file.write(" using " + bin_assoc_class.aclass.classname)
+                text_file.write(";\n")
 
             else:  # this is a sub-supertype association
             
                 s = r['superclass']
-                cn = s.replace(" ","_")
-                superclass = getclassinstance(cn)
+                cname = s.replace(" ","_")
+                superclass = getclassinstance(cname)
                 saclass = subsuper_association(rnum, superclass)
                 subsup_rel_list.append(saclass)
                 subclasses = r['subclasses']
                 sep = ""
-                n = text_file.write(cn + " is_a (")
+                text_file.write(cname + " is_a (")
                 for s in subclasses:
-                    cn = s.replace(" ","_")
-                    n = text_file.write(sep + cn)
+                    cname = s.replace(" ","_")
+                    text_file.write(sep + cname)
                     sep = ", "
-                    subclass = getclassinstance(cn)
+                    subclass = getclassinstance(cname)
                     saclass.subclasslist.append(subclass)
 
-                    # propagate any missing primary identifiers to subtype, denoting them as referential
+                    # propagate any missing primary identifiers to subtype, denoting them as referential (non-SM usage)
                     for superattr in superclass.identifiers[0].iattrs:
                         if superattr.name == "ID":
                             continue  # not this one - the subtype has to have an primary identifier
@@ -485,7 +496,7 @@ class MaslOut:
                             newattr.references.append(attr_rel_ref(rnum))
                             subclass.attrlist.append(newattr)
                             #print("added " + newattr.name + " to " + subclass.classname + " for " + rnum)
-                n = text_file.write(");\n");
+                text_file.write(");\n");
                 
                 
         # compute the formalizing attribute lists: for each class, for each association it formalizes
@@ -512,16 +523,17 @@ class MaslOut:
         # First step is to determine the appropriate identifier for the referred-to class:
         # i.e. the {In} which best matches the attributes required to formalize
                
+        # look for best referred-to class identifier for each formalized association
         # when searching for best identifier, ensure longer attribute lists are tested first - more demanding!
-        # so, sort the identifier list by decreasing length of the identifier's attribute list.
+        # so, first sort the identifier list by decreasing length of the identifier's attribute list.
+
         for c in model_class_list:
             idents = c.identifiers
             if len(idents) == 1:  # no choice!
                 continue
-            idents.sort(reverse = True, key = lambda identifier: len(identifier.iattrs) )
+            idents.sort(reverse = True, key = lambda identifier: len(identifier.iattrs))
                 
-        # look for best referred-to class identifier for each formalized association
-        # stash the identifier choice in the relationship for use in the resolution pass.
+        # now find best match, stashing the identifier choice in the relationship for use in the resolution pass.
                 
         for c in model_class_list:
             for formr in c.formalizations:
@@ -570,7 +582,9 @@ class MaslOut:
                         r.classident = ident.identnum
                         break
 
-        # now add referential resolution instances to each attribute of every formalizer
+        # now, using chosen identifiers, attempt to resolve the formalizations.
+        # add referential resolution instances to each attribute of every formalizer
+        # note that a second attempt may match a previously unresolved formalizer
         
         for c in model_class_list:
             for formr in c.formalizations:
@@ -584,16 +598,16 @@ class MaslOut:
                             formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
                         else:
                             formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
-                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
+                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)  # 2nd chance
                         break
                 for r in subsup_rel_list:
                     if formr.relnum == r.rnum:
                         formalization.resolve(formr, r.superclass, "", r.classident)
-                        formalization.resolve2(formr, r.superclass, "", r.classident)
+                        formalization.resolve2(formr, r.superclass, "", r.classident)  # 2nd chance
                         break
         
 
-        """Output class definitions"""
+        # Output MASL class definitions
 
         print(" ")
         text_file.write("\n")
@@ -610,7 +624,7 @@ class MaslOut:
                     p = " preferred "
                 if not attr.references:  # not a referential attribute
                     typ = attr.type
-                    if typ == "undefinedType":  # attempt to type correctly
+                    if typ == "undefinedType":  # attempt to define type correctly
                         tlist = []
                         if attr.name == "ID" or attr.name == "Name":
                             tlist = c.classname.split("_")
@@ -637,7 +651,7 @@ class MaslOut:
                             phrase = "." + res.rphrase
                         rnum = res.rnum
                         print("   " + rnum + phrase  + "." + classname + "." + attname + ")")
-                        n = text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
+                        text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
                         sep = ", "
                     text_file.write(" ) " +  "RefAttr;\n")
 
@@ -658,13 +672,13 @@ class MaslOut:
             print("  end object;")
             keyletter = c.keyletter
             print("pragma key letter ( ",'"' + keyletter + '"'," );\n")
-            n = text_file.write("  end object;\n")
-            n = text_file.write("pragma key_letter ( "'"' + keyletter + '"'" );\n\n")
+            text_file.write("  end object;\n")
+            text_file.write("pragma key_letter ( "'"' + keyletter + '"'" );\n\n")
 
         text_file.write("end domain;\n")
         text_file.close()
         
-        # report unresolved referentials
+        # report unresolved referentials and synthesized types
 
         print("\nThe following referential attributes were unmatched in a referred-to class:")
         for c in model_class_list:
