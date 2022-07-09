@@ -545,13 +545,20 @@ class MaslOut:
                 for r in binary_rel_list:
                     if formr.relnum == r.rnum:
                         formr.rel = r
-                        if r.is_associative and not r.is_reflexive: # two half-associations involved...
-                            ident = matchident(formr.formalizers, r.tclass)
-                            print(r.tclass.classname + " " + ident.identnum)
-                            r.tclassident = ident.identnum
-                            ident = matchident(formr.formalizers, r.pclass)
-                            print(r.pclass.classname + " " + ident.identnum)
-                            r.pclassident = ident.identnum
+                        if r.is_associative:
+                            if not r.is_reflexive: # two half-associations involved...
+                                ident = matchident(formr.formalizers, r.tclass)
+                                print(r.tclass.classname + " " + ident.identnum)
+                                r.tclassident = ident.identnum
+                                ident = matchident(formr.formalizers, r.pclass)
+                                print(r.pclass.classname + " " + ident.identnum)
+                                r.pclassident = ident.identnum
+                            else:
+                                print(" reflexive ")
+                                ident = matchident(formr.formalizers, r.tclass)
+                                print(r.tclass.classname + " " + ident.identnum)
+                                r.tclassident = ident.identnum
+                                
                         else:
                             # flatland does not require consistent ordering of relationship definitions:
                             # for this purpose, it is convenient to rely on which is the referred-to class.
@@ -571,7 +578,7 @@ class MaslOut:
                                 r.tcond = acond
                                 r.tmult = amult
                             ident = matchident(formr.formalizers, r.pclass)
-                            #print(r.pclass.classname + " " + ident.identnum)
+                            print(r.pclass.classname + " " + ident.identnum)
                             r.pclassident = ident.identnum
                         break
                 for r in subsup_rel_list:
@@ -590,12 +597,19 @@ class MaslOut:
             for formr in c.formalizations:
                 for r in binary_rel_list:
                     if formr.relnum == r.rnum:
-                        if r.is_associative and not r.is_reflexive: # two half-associations involved...
-                            formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
-                            formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
-                            # after both sides have had a chance to resolve, look for any unmatched.
-                            formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
-                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
+                        if r.is_associative:
+                            if not r.is_reflexive: # two half-associations involved...
+                                formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
+                                formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
+                                # after both sides have had a chance to resolve, look for any unmatched.
+                                formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
+                                formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
+                            else:
+                                formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
+                                formalization.resolve(formr, r.tclass, r.pphrase, r.tclassident)
+                                # after both sides have had a chance to resolve, look for any unmatched.
+                                formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
+                                formalization.resolve2(formr, r.tclass, r.pphrase, r.tclassident)
                         else:
                             formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
                             formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)  # 2nd chance
@@ -706,6 +720,37 @@ class MaslOut:
              for attr in c.attrlist:
                  if attr.synthtype:
                      print(c.classname + "." + attr.name + " has been given type: " + attr.type)
+                            
+        path = domain.replace(" ","") +".oal"
+        text_file = open(path, "w")
+
+        for c in model_class_list:
+           
+            cname = c.classname
+            text_file.write("// Output instances of " + c.classname + "\n")
+            text_file.write("T::push_buffer()\n")
+            text_file.write("select many " + c.classname + "_insts" + " from instances of " + c.classname + ";\n")
+            text_file.write("classname = " + "'"' +  c.classname + '"';\n")
+            text_file.write("for each " + c.classname + "_inst" + " in " + c.classname + "_insts\n")
+            for attr in c.attrlist:
+                if not attr.references: 
+                    text_file.write("attrname = " + '"' + attr.name + '"' + ";\n")
+                    text_file.write("attrvalue = " + c.classname + "_inst." + attr.name + ";\n")
+                    text_file.write("T::include(file:'"'templates/t.attribute.java'"');\n")
+            text_file.write("attributes = T::pop_buffer();\n")
+            text_file.write("T::push_buffer()\n")
+            for rel in c.formalizations:
+                text_file.write("select any target_instance across " + rel.relnum + ";\n")
+                text_file.write("relnum = " + rel.relnum + ";\n")
+                text_file.write("target = target_instance.instance_label;\n")
+                text_file.write("T::include(file:'"'templates/t.simpleassoc.java'"');\n")
+            text_file.write("associations = T::pop_buffer();\n")
+            
+            text_file.write("instance_label = " + c.classname + "_inst.instance_label;\n")
+            text_file.write("T::include(file:'"'templates/t.instance.java'"');\n")
+            text_file.write("end for;\n\n")
+            
+                
 
                
 
