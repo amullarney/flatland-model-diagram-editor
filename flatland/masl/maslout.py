@@ -45,6 +45,7 @@ class attribute:
         self.references = []       # references which formalize relationships using this attribute
         self.resolutions = []      # resolved referential linkage
         self.synthtype = False     # missing type name is synthesized from attribute/class name
+        self.fixup = False         # will be set if resolution is incomplete
 
 
 # A collection of one or more attributes whose values constitute an instance identifier.
@@ -143,13 +144,12 @@ class formalization:
                 if ident.identnum == identnum:
                     break
         # look for unresolved attributes in the formalizer list.
-        n = 0
+        unresolveds = []
         for rattr in self.formalizers:
             if rattr.resolutions == []:  # not resolved
-                n = n + 1
-                urattr = rattr
+                unresolveds.append(rattr)
 
-        if n == 1:  # exactly 1 unresolved referential - try to match it.
+        if unresolveds != []:
             n = 0
             for iattr in ident.iattrs:
                 found = False
@@ -163,8 +163,9 @@ class formalization:
                     uiattr = iattr
                     n = n + 1
             if n == 1:
-                print(self.relnum + ": matching single unmatched " + urattr.name + " to " + uiattr.name + " in " + refclass.classname)
-                urattr.resolutions.append(resolution(refclass, uiattr, self.relnum, phrase, "SingleIdent"))
+                for urattr in unresolveds:
+                    print(self.relnum + ": matching unmatched " + urattr.name + " to " + uiattr.name + " in " + refclass.classname)
+                    urattr.resolutions.append(resolution(refclass, uiattr, self.relnum, phrase, "SingleIdent"))
                 
         
 # an [ attribute name - match pass/fail ] pair
@@ -605,11 +606,22 @@ class MaslOut:
                                 formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
                                 formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
                             else:
-                                formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
-                                formalization.resolve(formr, r.tclass, r.pphrase, r.tclassident)
+                                # reflexive: all referentials resolve against the single class involved
+                                # two cases: heuristic match uncertain; referential to both sides.
+                                formalization.resolve(formr, r.tclass, "FIX THIS!!", r.tclassident)
                                 # after both sides have had a chance to resolve, look for any unmatched.
-                                formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
-                                formalization.resolve2(formr, r.tclass, r.pphrase, r.tclassident)
+                                formalization.resolve2(formr, r.tclass, "FIX THIS!!", r.tclassident)
+                                for rattr in formr.formalizers:
+                                    fixes = []
+                                    for res in rattr.resolutions:
+                                        if res.rphrase == "FIX THIS!!":
+                                            fixes.append(res)
+                                    if len(fixes) == 2:    # referential points at both sides of reflexive
+                                        fixes[0].rphrase = r.tphrase
+                                        fixes[1].rphrase = r.pphrase
+                                    if len(fixes) == 1:    # some uncertainty about resolution
+                                        fixes[0].rphrase = r.tphrase + " FIX THIS !!! "
+                                        rattr.fixup = True
                         else:
                             formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
                             formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)  # 2nd chance
@@ -695,11 +707,11 @@ class MaslOut:
         
         # report unresolved referentials and synthesized types
 
-        print("\nThe following referential attributes were unmatched in a referred-to class:")
+        print("\nThe following referential attributes were unmatched in a referred-to class:  [search for FIX THIS !!!]")
         for c in model_class_list:
             for formr in c.formalizations:
                 for attr in formr.formalizers:
-                    if attr.resolutions == []:
+                    if attr.resolutions == [] or attr.fixup:
                         print(formr.relnum + ": " + c.classname + " has unresolved " + attr.name + " ref ")
         print("\nThe following referentials matched a referred-to class ID identifying attribute (probably safe):")
         for c in model_class_list:
