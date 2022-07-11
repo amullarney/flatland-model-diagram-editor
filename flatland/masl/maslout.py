@@ -104,6 +104,7 @@ class resolution:
 class formalization:
     def __init__(self, relnum):
         self.relnum = relnum
+        self.reltype = 0       # 0 = unknown; 1 = binary; 2 = subsuper
         self.rel = 0
         self.formalizers = []  # the attributes that formalize this relationship
 
@@ -546,6 +547,7 @@ class MaslOut:
                 for r in binary_rel_list:
                     if formr.relnum == r.rnum:
                         formr.rel = r
+                        formr.reltype = 1  # will need this later
                         if r.is_associative:
                             if not r.is_reflexive: # two half-associations involved...
                                 ident = matchident(formr.formalizers, r.tclass)
@@ -585,6 +587,7 @@ class MaslOut:
                 for r in subsup_rel_list:
                     if formr.relnum == r.rnum:
                         formr.rel = r
+                        formr.reltype = 2
                         ident = matchident(formr.formalizers, r.superclass)
                         #print(r.superclass.classname + " " + ident.identnum)
                         r.classident = ident.identnum
@@ -596,41 +599,38 @@ class MaslOut:
         
         for c in model_class_list:
             for formr in c.formalizations:
-                for r in binary_rel_list:
-                    if formr.relnum == r.rnum:
-                        if r.is_associative:
-                            if not r.is_reflexive: # two half-associations involved...
-                                formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
-                                formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
-                                # after both sides have had a chance to resolve, look for any unmatched.
-                                formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
-                                formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
-                            else:
-                                # reflexive: all referentials resolve against the single class involved
-                                # two cases: heuristic match uncertain; referential to both sides.
-                                formalization.resolve(formr, r.tclass, "FIX THIS!!", r.tclassident)
-                                # after both sides have had a chance to resolve, look for any unmatched.
-                                formalization.resolve2(formr, r.tclass, "FIX THIS!!", r.tclassident)
-                                for rattr in formr.formalizers:
-                                    fixes = []
-                                    for res in rattr.resolutions:
-                                        if res.rphrase == "FIX THIS!!":
-                                            fixes.append(res)
-                                    if len(fixes) == 2:    # referential points at both sides of reflexive
-                                        fixes[0].rphrase = r.tphrase
-                                        fixes[1].rphrase = r.pphrase
-                                    if len(fixes) == 1:    # some uncertainty about resolution
-                                        fixes[0].rphrase = r.tphrase + " FIX THIS !!! "
-                                        rattr.fixup = True
-                        else:
+                r = formr.rel
+                if formr.reltype == 1:
+                    if r.is_associative:
+                        if not r.is_reflexive: # two half-associations involved...
+                            formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
                             formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
-                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)  # 2nd chance
-                        break
-                for r in subsup_rel_list:
-                    if formr.relnum == r.rnum:
-                        formalization.resolve(formr, r.superclass, "", r.classident)
-                        formalization.resolve2(formr, r.superclass, "", r.classident)  # 2nd chance
-                        break
+                            # after both sides have had a chance to resolve, look for any unmatched.
+                            formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
+                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
+                        else:
+                            # reflexive: all referentials resolve against the single class involved
+                            # two cases: heuristic match uncertain; referential to both sides.
+                            formalization.resolve(formr, r.tclass, "FIX THIS!!", r.tclassident)
+                            # after both sides have had a chance to resolve, look for any unmatched.
+                            formalization.resolve2(formr, r.tclass, "FIX THIS!!", r.tclassident)
+                            for rattr in formr.formalizers:
+                                fixes = []
+                                for res in rattr.resolutions:
+                                    if res.rphrase == "FIX THIS!!":
+                                        fixes.append(res)
+                                if len(fixes) == 2:    # referential points at both sides of reflexive
+                                    fixes[0].rphrase = r.tphrase
+                                    fixes[1].rphrase = r.pphrase
+                                if len(fixes) == 1:    # some uncertainty about resolution
+                                    fixes[0].rphrase = r.tphrase + " FIX THIS !!! "
+                                    rattr.fixup = True
+                    else:
+                        formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
+                        formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)  # 2nd chance
+                if formr.reltype == 2:
+                      formalization.resolve(formr, r.superclass, "", r.classident)
+                      formalization.resolve2(formr, r.superclass, "", r.classident)  # 2nd chance
         
 
         # Output MASL class definitions
@@ -740,26 +740,44 @@ class MaslOut:
            
             cname = c.classname
             text_file.write("// Output instances of " + c.classname + "\n")
-            text_file.write("T::push_buffer()\n")
+            text_file.write("classname = "'"' +  c.classname + '"'";\n")
             text_file.write("select many " + c.classname + "_insts" + " from instances of " + c.classname + ";\n")
-            text_file.write("classname = " + "'"' +  c.classname + '"';\n")
             text_file.write("for each " + c.classname + "_inst" + " in " + c.classname + "_insts\n")
             for attr in c.attrlist:
                 if not attr.references: 
                     text_file.write("attrname = " + '"' + attr.name + '"' + ";\n")
                     text_file.write("attrvalue = " + c.classname + "_inst." + attr.name + ";\n")
-                    text_file.write("T::include(file:'"'templates/t.attribute.java'"');\n")
+                    text_file.write("T::include(file:"'"' + "templates/t.attribute.java" + '"'");\n")
             text_file.write("attributes = T::pop_buffer();\n")
             text_file.write("T::push_buffer()\n")
-            for rel in c.formalizations:
-                text_file.write("select any target_instance across " + rel.relnum + ";\n")
-                text_file.write("relnum = " + rel.relnum + ";\n")
-                text_file.write("target = target_instance.instance_label;\n")
-                text_file.write("T::include(file:'"'templates/t.simpleassoc.java'"');\n")
+            for formr in c.formalizations:
+                rel = formr.rel
+                if formr.reltype == 1:
+                    if not rel.is_associative:
+                        other = c
+                        if c == rel.tclass:
+                            other = rel.pclass
+                        else:
+                            other = rel.tclass
+                        text_file.write("select one " + other.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "];\n")
+                        text_file.write("targetname = " + other.classname + ".instance_label;\n")
+                        text_file.write("T::include(file:"'"' + "templates/t.simpleassoc.java" + '"'");\n")
+                    else:
+                        text_file.write("select one " + rel.tclass.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "." + rel.tphrase + "];\n")
+                        text_file.write("forward = " + rel.tclass.classname + ".instance_label;\n")
+                        text_file.write("select one " + rel.pclass.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "." + rel.pphrase + "];\n")
+                        text_file.write("backward = " + rel.pclass.classname + ".instance_label;\n")
+                        text_file.write("T::include(file:"'"' + "templates/t.assocassoc.java" + '"'");\n")
+                else:
+                    text_file.write("select one " + rel.superclass.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "];\n")
+                    text_file.write("targetname = " + rel.superclass.classname + ".instance_label;\n")
+                    text_file.write("T::include(file:"'"' + "templates/t.subsupassoc.java" + '"'");\n")
             text_file.write("associations = T::pop_buffer();\n")
             
             text_file.write("instance_label = " + c.classname + "_inst.instance_label;\n")
-            text_file.write("T::include(file:'"'templates/t.instance.java'"');\n")
+            text_file.write("T::include(file:"'"' + "templates/t.instance.java" + '"'");\n")
+            text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n")
+            text_file.write("T::clear();\n")
             text_file.write("end for;\n\n")
             
                 
