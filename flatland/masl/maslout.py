@@ -741,17 +741,22 @@ class MaslOut:
             cname = c.classname
             text_file.write("// Output instances of " + c.classname + "\n")
             text_file.write("classname = "'"' +  c.classname + '"'";\n")
+            text_file.write("T::include(file:"'"' + "templates/t.class.java" + '"'");\n")
+            text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n")
+            text_file.write("T::clear();\n")
             text_file.write("select many " + c.classname + "_insts" + " from instances of " + c.classname + ";\n")
             text_file.write("for each " + c.classname + "_inst" + " in " + c.classname + "_insts\n")
+            text_file.write("T::push_buffer();\n")
             for attr in c.attrlist:
-                if not attr.references: 
+                if not attr.references and attr.name == "instance_label":  # type mismatch issue here...
                     text_file.write("attrname = " + '"' + attr.name + '"' + ";\n")
                     text_file.write("attrvalue = " + c.classname + "_inst." + attr.name + ";\n")
                     text_file.write("T::include(file:"'"' + "templates/t.attribute.java" + '"'");\n")
-            text_file.write("attributes = T::pop_buffer();\n")
-            text_file.write("T::push_buffer()\n")
+            text_file.write("attributes = T::body();\nT::pop_buffer();\n")
+            text_file.write("T::push_buffer();\n")
             for formr in c.formalizations:
                 rel = formr.rel
+                text_file.write("relnum = "'"' +  rel.rnum + '"'";\n")
                 if formr.reltype == 1:
                     if not rel.is_associative:
                         other = c
@@ -759,20 +764,22 @@ class MaslOut:
                             other = rel.pclass
                         else:
                             other = rel.tclass
-                        text_file.write("select one " + other.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "];\n")
-                        text_file.write("targetname = " + other.classname + ".instance_label;\n")
-                        text_file.write("T::include(file:"'"' + "templates/t.simpleassoc.java" + '"'");\n")
+                        text_file.write("select one " + other.classname + " related by " + c.classname + "_inst->" + other.classname + "[" + rel.rnum + "];\n")
+                        text_file.write("if not_empty " + other.classname + "\n")
+                        text_file.write("  targetname = " + other.classname + ".instance_label;\n")
+                        text_file.write("  T::include(file:"'"' + "templates/t.simpleassoc.java" + '"'");\n")
+                        text_file.write("end if;\n")
                     else:
-                        text_file.write("select one " + rel.tclass.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "." + rel.tphrase + "];\n")
+                        text_file.write("select one " + rel.tclass.classname + " related by " + c.classname + "_inst->" + rel.tclass.classname + "[" + rel.rnum + "." + rel.tphrase + "];\n")
                         text_file.write("forward = " + rel.tclass.classname + ".instance_label;\n")
-                        text_file.write("select one " + rel.pclass.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "." + rel.pphrase + "];\n")
+                        text_file.write("select one " + rel.pclass.classname + " related by " + c.classname + "_inst->" + rel.pclass.classname + "[" + rel.rnum + "." + rel.pphrase + "];\n")
                         text_file.write("backward = " + rel.pclass.classname + ".instance_label;\n")
                         text_file.write("T::include(file:"'"' + "templates/t.assocassoc.java" + '"'");\n")
                 else:
-                    text_file.write("select one " + rel.superclass.classname + " related by " + c.classname + "_inst->[" + rel.rnum + "];\n")
+                    text_file.write("select one " + rel.superclass.classname + " related by " + c.classname + "_inst->" + rel.superclass.classname + "[" + rel.rnum + "];\n")
                     text_file.write("targetname = " + rel.superclass.classname + ".instance_label;\n")
                     text_file.write("T::include(file:"'"' + "templates/t.subsupassoc.java" + '"'");\n")
-            text_file.write("associations = T::pop_buffer();\n")
+            text_file.write("associations = T::body();\nT::pop_buffer();\n")
             
             text_file.write("instance_label = " + c.classname + "_inst.instance_label;\n")
             text_file.write("T::include(file:"'"' + "templates/t.instance.java" + '"'");\n")
