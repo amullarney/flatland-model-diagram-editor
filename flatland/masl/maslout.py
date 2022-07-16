@@ -312,7 +312,7 @@ class MaslOut:
         
         domain = self.subsys.name['subsys_name']
         print("Generating MASL domain definitions for " + domain)
-        path = domain.replace(" ","") +".mod"
+        path = domain.replace(" ","") +".out"
         text_file = open(path, "w")
         text_file.write("domain " + domain + " is\n")
 
@@ -320,12 +320,12 @@ class MaslOut:
             # Get the class name from the model; remove all white space
             txt = aclass['name']
             classname = txt.replace(" ","_")
-            text_file.write("  object " + classname +";\n")
 
             # Optional keyletter (class name abbreviation) after the class name?
             keyletter = str(aclass.get('keyletter'))
             if keyletter == "None":
                 keyletter = classname
+            text_file.write("  object " + keyletter +";\n")
 
             classattrs = aclass['attributes']
             thisclass = modelclass(classname, keyletter)
@@ -349,7 +349,8 @@ class MaslOut:
                     if attrtype.endswith(suffix):
                        attrstrip = attrtype[:-len(suffix)]
                        attrtype = attrstrip
-                    attrtype = attrtype + "_t"
+                    #attrtype = attrtype + "_t"
+                    attrtype = "string"
 
                 thisattr = attribute(attrname, attrtype)
                 thisclass.attrlist.append(thisattr)
@@ -451,8 +452,8 @@ class MaslOut:
                 if tclass == pclass:
                     bin_assoc_class.is_reflexive = True
 
-                text_file.write(tc + pcondtxt + pp + pmulttxt + pc + ",\n")
-                text_file.write("  " + pc + tcondtxt + tp + tmulttxt + tc)
+                text_file.write(tclass.keyletter + pcondtxt + pp + pmulttxt + pclass.keyletter + ",\n")
+                text_file.write("  " + pclass.keyletter + tcondtxt + tp + tmulttxt + tclass.keyletter)
                 
                 # check for a named associative class for this relationship
                 
@@ -464,7 +465,7 @@ class MaslOut:
                     assoc_class = getclassinstance(acname)
                     bin_assoc_class.aclass = assoc_class
                     bin_assoc_class.is_associative = True
-                    text_file.write(" using " + bin_assoc_class.aclass.classname)
+                    text_file.write(" using " + bin_assoc_class.aclass.keyletter)
                 text_file.write(";\n")
 
             else:  # this is a sub-supertype association
@@ -476,12 +477,12 @@ class MaslOut:
                 subsup_rel_list.append(saclass)
                 subclasses = r['subclasses']
                 sep = ""
-                text_file.write(cname + " is_a (")
+                text_file.write(superclass.keyletter + " is_a (")
                 for s in subclasses:
                     cname = s.replace(" ","_")
-                    text_file.write(sep + cname)
-                    sep = ", "
                     subclass = getclassinstance(cname)
+                    text_file.write(sep + subclass.keyletter)
+                    sep = ", "
                     saclass.subclasslist.append(subclass)
 
                     # propagate any missing primary identifiers to subtype, denoting them as referential (non-SM usage)
@@ -640,7 +641,7 @@ class MaslOut:
         
         for c in model_class_list:
            
-            cname = c.classname
+            cname = c.keyletter
             print("  object ", cname, " is")
             text_file.write("  object "+ cname + " is\n    instance_label : string;\n")
             
@@ -664,6 +665,7 @@ class MaslOut:
                         print("synthesized " + typ)
                         attr.type = typ
                     print("    " + attr.name + " : " + p + typ)
+                    typ = "string"
                     text_file.write("    " + attr.name + " : " + p + typ + ";\n")
                 else:
                     print("    " + attr.name + " : " + p + "referential ( ")
@@ -671,19 +673,21 @@ class MaslOut:
                     sep = ""
                     phrase = ""
                     for res in attr.resolutions:
-                        classname = res.rclass.classname
+                        cname = res.rclass.keyletter
                         attname = res.rattr.name
                         phrase = ""
                         if not res.rphrase == "":
                             phrase = "." + res.rphrase
                         rnum = res.rnum
-                        print("   " + rnum + phrase  + "." + classname + "." + attname + ")")
-                        text_file.write(sep + rnum + phrase  + "." + classname + "." + attname)
+                        print("   " + rnum + phrase  + "." + cname + "." + attname + ")")
+                        text_file.write(sep + rnum + phrase  + "." + cname + "." + attname)
                         sep = ", "
                     text_file.write(" ) " +  "RefAttr;\n")
 
             # output identifier groups for all non-preferred
-            
+
+            idents = c.identifiers
+            idents.sort( key = lambda identifier: identifier.identnum )  # order them
             for ident in c.identifiers:
                 sep = ""
                 if ident.identnum == "I":  # skip this group of 'preferred' identifiers
@@ -727,7 +731,7 @@ class MaslOut:
                     for res in attr.resolutions:
                         if res.rnum == formr.relnum and res.category == "SingleIdent":
                             print(res.rnum + ": " + c.classname + "." + attr.name + "  singly matched to  " + res.rclass.classname + "." + res.rattr.name)
-        print("\nThe following attributes have been heuristically typed:")
+        print("\nThe following attributes have been heuristically typed: - not used.. all types are string")
         for c in model_class_list:
              for attr in c.attrlist:
                  if attr.synthtype:
@@ -738,54 +742,69 @@ class MaslOut:
 
         for c in model_class_list:
            
-            cname = c.classname
-            text_file.write("// Output instances of " + c.classname + "\n")
-            text_file.write("classname = "'"' +  c.classname + '"'";\n")
-            text_file.write("T::include(file:"'"' + "templates/t.class.java" + '"'");\n")
-            text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n")
-            text_file.write("T::clear();\n")
-            text_file.write("select many " + c.classname + "_insts" + " from instances of " + c.classname + ";\n")
-            text_file.write("for each " + c.classname + "_inst" + " in " + c.classname + "_insts\n")
-            text_file.write("T::push_buffer();\n")
+            cname = c.keyletter
+            text_file.write("// Output instances of " + cname + "\n")
+            text_file.write("select many " + cname + "_insts" + " from instances of " + cname + ";\n")
+            text_file.write("if not_empty " + cname + "_insts\n")
+            text_file.write("  T::push_buffer();\n")
+            text_file.write("  instances = " + '"' + '"' + ";\n")
+            text_file.write("  for each " + cname + "_inst" + " in " + cname + "_insts\n")
             for attr in c.attrlist:
-                if not attr.references and attr.name == "instance_label":  # type mismatch issue here...
-                    text_file.write("attrname = " + '"' + attr.name + '"' + ";\n")
-                    text_file.write("attrvalue = " + c.classname + "_inst." + attr.name + ";\n")
-                    text_file.write("T::include(file:"'"' + "templates/t.attribute.java" + '"'");\n")
-            text_file.write("attributes = T::body();\nT::pop_buffer();\n")
-            text_file.write("T::push_buffer();\n")
+                if not attr.references:
+                    text_file.write("    attrname = " + '"' + attr.name + '"' + ";\n")
+                    text_file.write("    attrvalue = " + cname + "_inst." + attr.name + ";\n")
+                    text_file.write("    T::include(file:"'"' + "attribute.java" + '"'");\n")
+            text_file.write("    attributes = T::body();\n")
+            text_file.write("    T::clear();\n")
             for formr in c.formalizations:
                 rel = formr.rel
-                text_file.write("relnum = "'"' +  rel.rnum + '"'";\n")
+                text_file.write("    relnum = "'"' +  rel.rnum + '"'";\n")
                 if formr.reltype == 1:
+                    pphrase = ""
+                    tphrase = ""
+                    if rel.is_reflexive:
+                        pphrase = "." + rel.pphrase
+                        tphrase = "." + rel.tphrase
                     if not rel.is_associative:
                         other = c
                         if c == rel.tclass:
                             other = rel.pclass
+                            phrase = pphrase
                         else:
                             other = rel.tclass
-                        text_file.write("select one " + other.classname + " related by " + c.classname + "_inst->" + other.classname + "[" + rel.rnum + "];\n")
-                        text_file.write("if not_empty " + other.classname + "\n")
-                        text_file.write("  targetname = " + other.classname + ".instance_label;\n")
-                        text_file.write("  T::include(file:"'"' + "templates/t.simpleassoc.java" + '"'");\n")
-                        text_file.write("end if;\n")
+                            phrase = tphrase
+                        text_file.write("    select one " + other.keyletter + " related by " + cname + "_inst->" + other.keyletter + "[" + rel.rnum + phrase + "];\n")
+                        text_file.write("    if not_empty " + other.keyletter + "\n")
+                        text_file.write("      targetname = " + other.keyletter + ".instance_label;\n")
+                        text_file.write("      T::include(file:"'"' + "simpleassoc.java" + '"'");\n")
+                        text_file.write("    end if;\n")
                     else:
-                        text_file.write("select one " + rel.tclass.classname + " related by " + c.classname + "_inst->" + rel.tclass.classname + "[" + rel.rnum + "." + rel.tphrase + "];\n")
-                        text_file.write("forward = " + rel.tclass.classname + ".instance_label;\n")
-                        text_file.write("select one " + rel.pclass.classname + " related by " + c.classname + "_inst->" + rel.pclass.classname + "[" + rel.rnum + "." + rel.pphrase + "];\n")
-                        text_file.write("backward = " + rel.pclass.classname + ".instance_label;\n")
-                        text_file.write("T::include(file:"'"' + "templates/t.assocassoc.java" + '"'");\n")
+                        text_file.write("    select one " + rel.tclass.keyletter + " related by " + cname + "_inst->" + rel.tclass.keyletter + "[" + rel.rnum + tphrase + "];\n")
+                        text_file.write("    forward = " + rel.tclass.keyletter + ".instance_label;\n")
+                        text_file.write("    select one " + rel.pclass.keyletter + " related by " + cname + "_inst->" + rel.pclass.keyletter + "[" + rel.rnum + pphrase + "];\n")
+                        text_file.write("    backward = " + rel.pclass.keyletter + ".instance_label;\n")
+                        text_file.write("    T::include(file:"'"' + "assocassoc.java" + '"'");\n")
                 else:
-                    text_file.write("select one " + rel.superclass.classname + " related by " + c.classname + "_inst->" + rel.superclass.classname + "[" + rel.rnum + "];\n")
-                    text_file.write("targetname = " + rel.superclass.classname + ".instance_label;\n")
-                    text_file.write("T::include(file:"'"' + "templates/t.subsupassoc.java" + '"'");\n")
-            text_file.write("associations = T::body();\nT::pop_buffer();\n")
+                    text_file.write("    select one " + rel.superclass.keyletter + " related by " + cname + "_inst->" + rel.superclass.keyletter + "[" + rel.rnum + "];\n")
+                    text_file.write("    targetname = " + rel.superclass.keyletter + ".instance_label;\n")
+                    text_file.write("    T::include(file:"'"' + "subsupassoc.java" + '"'");\n")
+            text_file.write("    associations = T::body();\n")
+            text_file.write("    T::clear();\n")
             
-            text_file.write("instance_label = " + c.classname + "_inst.instance_label;\n")
-            text_file.write("T::include(file:"'"' + "templates/t.instance.java" + '"'");\n")
-            text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n")
-            text_file.write("T::clear();\n")
-            text_file.write("end for;\n\n")
+            text_file.write("    instance_label = " + cname + "_inst.instance_label;\n")
+            text_file.write("    T::include(file:"'"' + "instance.java" + '"'");\n")
+            text_file.write("    instances = instances + T::body();\n")
+            text_file.write("  end for;\n")
+            text_file.write("  T::pop_buffer();\n")
+
+            text_file.write("  classname = "'"' +  cname + '"'";\n")
+            text_file.write("  T::include(file:"'"' + "class.java" + '"'");\n")
+            text_file.write("end if;\n\n")
+        text_file.write("population = T::body();\n")
+        text_file.write("T::include(file:"'"' + "population.java" + '"'");\n")
+        text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n\n")
+        
+        text_file.write("control stop;\n")
             
                 
 
