@@ -340,6 +340,10 @@ class MaslOut:
                 for x in result:
                     aline.update(x)  # 'gather' child node data
                 attrname = aline['aname']
+                if attrname.startswith('/'):    # UML notation for 'derived' attribute
+                    print("skipping derived: " + attrname)
+                    classattrs.pop(0)
+                    continue
                 attrtype = aline.get('atype')
                 if not attrtype:
                     attrtype = "undefinedType"  # default.. to be tested for later
@@ -755,7 +759,6 @@ class MaslOut:
                     text_file.write("    attrvalue = " + cname + "_inst." + attr.name + ";\n")
                     text_file.write("    T::include(file:"'"' + "attribute.java" + '"'");\n")
             text_file.write("    attributes = T::body();\n")
-            text_file.write("    T::clear();\n")
             for formr in c.formalizations:
                 rel = formr.rel
                 text_file.write("    relnum = "'"' +  rel.rnum + '"'";\n")
@@ -789,7 +792,6 @@ class MaslOut:
                     text_file.write("    targetname = " + rel.superclass.keyletter + ".instance_label;\n")
                     text_file.write("    T::include(file:"'"' + "subsupassoc.java" + '"'");\n")
             text_file.write("    associations = T::body();\n")
-            text_file.write("    T::clear();\n")
             
             text_file.write("    instance_label = " + cname + "_inst.instance_label;\n")
             text_file.write("    T::include(file:"'"' + "instance.java" + '"'");\n")
@@ -803,9 +805,7 @@ class MaslOut:
         text_file.write("population = T::body();\n")
         text_file.write("T::include(file:"'"' + "population.java" + '"'");\n")
         text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n\n")
-        
-        text_file.write("control stop;\n")
-            
+                    
                 
 
                
