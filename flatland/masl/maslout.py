@@ -16,7 +16,8 @@ from arpeggio.cleanpeg import ParserPEG
 from arpeggio import visit_parse_tree, NoMatch
 from collections import namedtuple
 from flatland.masl.attr_visitor import AttrVisitor
-
+from os.path import exists
+from pathlib import Path
 
 # class definitions:
 
@@ -310,6 +311,14 @@ class MaslOut:
         except ModelParseError as e:
             sys.exit(e)
         
+        exclusions = []   
+        if exists("exclusions.txt"):
+            exclusions = Path("exclusions.txt").read_text().splitlines()
+            for x in exclusions:
+                print(x + "-")
+        else:
+            print("cannot find exclusions file")
+        
         domain = self.subsys.name['subsys_name']
         print("Generating MASL domain definitions for " + domain)
         path = domain.replace(" ","") +".out"
@@ -339,9 +348,21 @@ class MaslOut:
                 aline = {}
                 for x in result:
                     aline.update(x)  # 'gather' child node data
+                # check for derived (function) attribute
                 attrname = aline['aname']
                 if attrname.startswith('/'):    # UML notation for 'derived' attribute
                     print("skipping derived: " + attrname)
+                    classattrs.pop(0)
+                    continue
+                # check for attribute exclusion
+                matchattr = classname + ':' + attrname
+                match = False
+                for x in exclusions:
+                    if matchattr == x:
+                        match = True
+                        break
+                if match:
+                    print("skipping excluded: " + matchattr)
                     classattrs.pop(0)
                     continue
                 attrtype = aline.get('atype')
