@@ -311,13 +311,18 @@ class MaslOut:
         except ModelParseError as e:
             sys.exit(e)
         
+        
+        # read a file of attributes to be excluded from population data
+        # one line for each: format: <classname>:<attribute_name>
         exclusions = []   
         if exists("exclusions.txt"):
             exclusions = Path("exclusions.txt").read_text().splitlines()
+            print("Attribute exclusion entries:")
             for x in exclusions:
-                print(x + "-")
+                print(x)
         else:
             print("cannot find exclusions file")
+        print("")
         
         domain = self.subsys.name['subsys_name']
         print("Generating MASL domain definitions for " + domain)
@@ -761,9 +766,28 @@ class MaslOut:
              for attr in c.attrlist:
                  if attr.synthtype:
                      print(c.classname + "." + attr.name + " has been given type: " + attr.type)
+
+
+        # output OAL for instance labeling and population data output
                             
         path = domain.replace(" ","") +".oal"
         text_file = open(path, "w")
+
+        for c in model_class_list:
+            cname = c.keyletter
+            text_file.write("// Check instance_label for " + cname + " instances\n")
+            text_file.write("select many " + cname + "_insts" + " from instances of " + cname + ";\n")
+            text_file.write("lblnum = 1;\n")
+            text_file.write("for each " + cname + "_inst" + " in " + cname + "_insts\n")
+            text_file.write("  instance_label = " + cname + "_inst.instance_label;\n")
+            text_file.write("  if instance_label == " + '"' + '"' + ";\n")
+            text_file.write("    genlabel = " + '"' +  cname + '"' + " + " + "\"_\"" + " + STR::itoa(i:lblnum);\n")
+            text_file.write("    " + cname + "_inst.instance_label = genlabel;\n")
+            text_file.write("    lblnum = lblnum + 1;\n")
+            text_file.write("  else\n")
+            text_file.write("    break;\n")
+            text_file.write("  end if;\n") 
+            text_file.write("end for;\n")
 
         for c in model_class_list:
            
