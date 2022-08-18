@@ -122,7 +122,8 @@ class formalization:
             matched = False
             for iattr in ident.iattrs:
                 if rattr.name == iattr.name:
-                    print(self.relnum + ": formalization match: " + rattr.name + " to " + iattr.name + " in " + refclass.classname)
+                    print(self.relnum + ": formalization match: " + rattr.name + " to attribute name " + iattr.name + " in " + refclass.classname)
+                    print(rattr.name + ": " + iattr.type)
                     rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, "matched"))
                     matched = True
                     break
@@ -131,7 +132,8 @@ class formalization:
                 for iattr in ident.iattrs:
                     if iattr.name == "ID":
                         if rattr.name == attributize(refclass.classname):
-                            #print(self.relnum + ": formalization match: " + rattr.name + " to ID in "  + refclass.classname)
+                            print(self.relnum + ": formalization match: " + rattr.name + " to ID in "  + refclass.classname)
+                            print(rattr.name + ": " + iattr.type)
                             rattr.resolutions.append(resolution(refclass, iattr, self.relnum, phrase, "ID"))
                             matched = True
                             break
@@ -168,6 +170,9 @@ class formalization:
                 for urattr in unresolveds:
                     print(self.relnum + ": matching unmatched " + urattr.name + " to " + uiattr.name + " in " + refclass.classname)
                     urattr.resolutions.append(resolution(refclass, uiattr, self.relnum, phrase, "SingleIdent"))
+                    if uiattr.type != "undefinedType":
+                        urattr.type = uiattr.type
+                        urattr.synthtype = True
                 
         
 # an [ attribute name - match pass/fail ] pair
@@ -380,7 +385,7 @@ class MaslOut:
                        attrstrip = attrtype[:-len(suffix)]
                        attrtype = attrstrip
                     attrtype = attrtype + "_t"
-                    #attrtype = "string"
+                    print("constructed type: " +  attrtype + " for " + attrname + " of " + classname)
 
                 thisattr = attribute(attrname, attrtype)
                 thisclass.attrlist.append(thisattr)
@@ -418,6 +423,28 @@ class MaslOut:
 
                 classattrs.pop(0)  # done with this attribute line
 
+
+
+
+
+        # chase down identifier attribute types
+
+        for c in model_class_list:
+            for attr in c.attrlist:
+                if attr.type == "undefinedType" and not attr.references:
+                    print(attr.name + " is undefined for " + c.classname)
+                    tlist = []
+                    if attr.name == "ID" or attr.name == "Name":
+                        tlist = c.classname.split("_")
+                    else:
+                        tlist = attr.name.split("_")
+                    tname = ''
+                    for titem in tlist:
+                        tname = tname + titem.capitalize()
+                    typ = tname + "_t"
+                    attr.synthtype = True
+                    print("synthesized " + typ)
+                    attr.type = typ
 
         # Get all association data - this will be needed to type referential attributes
         # Create two lists of association data class types - binary and sub-super
@@ -664,6 +691,25 @@ class MaslOut:
                       formalization.resolve2(formr, r.superclass, "", r.classident)  # 2nd chance
         
 
+
+
+        for c in model_class_list:
+            for attr in c.attrlist:
+                if attr.references and attr.type == "undefinedType":
+                    print("trying to type: " + attr.name + " for " + c.classname)
+                    rattr = attr
+                    while rattr.resolutions != []:
+                        res = rattr.resolutions[0]
+                        if res:
+                            print(res.rattr.name + " " + res.rattr.type)
+                            rattr = res.rattr
+                        else:
+                            break
+                    attr.type = rattr.type
+                    print(c.classname + ":  " + attr.name + " now typed as " + attr.type)
+
+
+
         # Output MASL class definitions
 
         print(" ")
@@ -695,7 +741,9 @@ class MaslOut:
                         attr.synthtype = True
                         print("synthesized " + typ)
                         attr.type = typ
-                    print("    " + attr.name + " : " + p + typ)
+
+                if not attr.references:
+                    print("    " + attr.name + " : " + p + attr.type)
                     typ = "string"
                     text_file.write("    " + attr.name + " : " + p + typ + ";\n")
                 else:
