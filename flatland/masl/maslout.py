@@ -379,8 +379,8 @@ class MaslOut:
                     if attrtype.endswith(suffix):
                        attrstrip = attrtype[:-len(suffix)]
                        attrtype = attrstrip
-                    #attrtype = attrtype + "_t"
-                    attrtype = "string"
+                    attrtype = attrtype + "_t"
+                    #attrtype = "string"
 
                 thisattr = attribute(attrname, attrtype)
                 thisclass.attrlist.append(thisattr)
@@ -679,8 +679,9 @@ class MaslOut:
                 p = ""
                 if attr.is_preferred:
                     p = " preferred "
-                if not attr.references:  # not a referential attribute
+                if not attr.synthtype:
                     typ = attr.type
+                    print("attr: " + attr.name + " " + typ)
                     if typ == "undefinedType":  # attempt to define type correctly
                         tlist = []
                         if attr.name == "ID" or attr.name == "Name":
@@ -850,9 +851,59 @@ class MaslOut:
         text_file.write("population = T::body();\n")
         text_file.write("T::include(file:"'"' + "population.java" + '"'");\n")
         text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n\n")
-                    
-                
 
+                    
+        # output domain definitions in Micca format
+                    
+        path = domain.replace(" ","") +".txt"
+        text_file = open(path, "w")
+        text_file.write("domain " + domain + "{\n")
+        
+        # emit class definitions
+        for c in model_class_list:
+            text_file.write("\nclass " + c.keyletter + "{\n")
+            for attr in c.attrlist:
+                text_file.write("    attribute " + attr.name + " {" + attr.type + "}\n")
+            text_file.write("}\n")
+
+        # emit sub-super associations
+        backslash = "\\"
+        for subsup in subsup_rel_list:
+            superclass = subsup.superclass
+            text_file.write("\ngeneralization " + subsup.rnum + " -union " + superclass.keyletter + backslash + "\n")
+            for sub in subsup.subclasslist:
+                text_file.write("    " + sub.keyletter + backslash + "\n")
+
+        #emit binary associations                
+        for binassoc in binary_rel_list:
+            text_file.write("\nassociation " + binassoc.rnum + " ")
+            if binassoc.is_associative:
+                text_file.write("-associator " + binassoc.aclass.keyletter + backslash + "\n    ")
+            text_file.write(binassoc.tclass.keyletter + " ")
+            if binassoc.tcond:
+                ttxt = "0"
+                if binassoc.tmult:
+                    ttxt = ttxt + "..*"
+                else:
+                    ttxt = ttxt + "..1"
+            else:
+                ttxt = "1";
+            if binassoc.tmult:
+                ttxt = ttxt + "..*"
+            text_file.write(ttxt + "--")
+            if binassoc.pcond:
+                ttxt = "0"
+                if binassoc.pmult:
+                    ttxt = ttxt + "..*"
+                else:
+                    ttxt = ttxt + "..1"
+            else:
+                ttxt = "1";
+            if binassoc.pmult:
+                ttxt = ttxt + "..*"
+            text_file.write(ttxt + " " + binassoc.pclass.keyletter + "\n")
+
+        text_file.write("\n}\n")
                
 
                             
