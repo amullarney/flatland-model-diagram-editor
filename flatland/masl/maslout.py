@@ -277,6 +277,22 @@ def attributize(argname):
         return ltxt.capitalize()
 
 
+# format one half of a relationship spec given conditionality and multiplicity
+
+def assoctxt(cond, mult):
+            if cond:
+                txt = "0"
+                if mult:
+                    txt = txt + "..*"
+                else:
+                    txt = txt + "..1"
+            else:
+                txt = "1";
+                if mult:
+                    txt = txt + "..*"
+            return txt
+
+
 # class and relationship lists
 
 model_class_list = []    
@@ -905,11 +921,11 @@ class MaslOut:
                     
         path = domain.replace(" ","") +".txt"
         text_file = open(path, "w")
-        text_file.write("domain " + domain + "{\n")
+        text_file.write("domain " + domain + " {\n")
         
         # emit class definitions
         for c in model_class_list:
-            text_file.write("\nclass " + c.keyletter + "{\n")
+            text_file.write("\nclass " + c.keyletter + " {\n")
             for attr in c.attrlist:
                 text_file.write("    attribute " + attr.name + " {" + attr.type + "}\n")
             text_file.write("}\n")
@@ -927,29 +943,16 @@ class MaslOut:
             text_file.write("\nassociation " + binassoc.rnum + " ")
             if binassoc.is_associative:
                 text_file.write("-associator " + binassoc.aclass.keyletter + backslash + "\n    ")
-            text_file.write(binassoc.tclass.keyletter + " ")
-            if binassoc.tcond:
-                ttxt = "0"
-                if binassoc.tmult:
-                    ttxt = ttxt + "..*"
-                else:
-                    ttxt = ttxt + "..1"
+            ttxt = assoctxt(binassoc.tcond, binassoc.tmult)
+            ptxt = assoctxt(binassoc.pcond, binassoc.pmult)
+            if binassoc.pmult and not binassoc.tmult:
+                text_file.write(binassoc.pclass.keyletter + " " + ptxt)
+                text_file.write("--")
+                text_file.write(ttxt + " " + binassoc.tclass.keyletter + "\n")
             else:
-                ttxt = "1";
-            if binassoc.tmult:
-                ttxt = ttxt + "..*"
-            text_file.write(ttxt + "--")
-            if binassoc.pcond:
-                ttxt = "0"
-                if binassoc.pmult:
-                    ttxt = ttxt + "..*"
-                else:
-                    ttxt = ttxt + "..1"
-            else:
-                ttxt = "1";
-            if binassoc.pmult:
-                ttxt = ttxt + "..*"
-            text_file.write(ttxt + " " + binassoc.pclass.keyletter + "\n")
+                text_file.write(binassoc.tclass.keyletter + " " + ttxt)
+                text_file.write("--")
+                text_file.write(ptxt + " " + binassoc.pclass.keyletter + "\n")
 
         text_file.write("\n}\n")
                
