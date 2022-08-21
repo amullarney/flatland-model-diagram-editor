@@ -850,16 +850,18 @@ class MaslOut:
             text_file.write("    " + cname + "_inst.instance_label = genlabel;\n")
             text_file.write("    lblnum = lblnum + 1;\n")
             text_file.write("  else\n")
-            text_file.write("    break;\n")
+            text_file.write("    lbl = " + cname + "_inst.instance_label;\n")
+            text_file.write("    " + cname + "_inst.instance_label = STRING::replaceall(s:lbl, pattern:" + '"' + "-" + '"' + ", replacement:" + '"' + "_" + '"' + ");\n")
             text_file.write("  end if;\n") 
             text_file.write("end for;\n")
+
 
         for c in model_class_list:
            
             cname = c.keyletter
             text_file.write("// Output instances of " + cname + "\n")
             text_file.write("select many " + cname + "_insts" + " from instances of " + cname + ";\n")
-            text_file.write("if not_empty " + cname + "_insts\n")
+            #text_file.write("if not_empty " + cname + "_insts\n")
             text_file.write("  T::push_buffer();\n")
             text_file.write("  instances = " + '"' + '"' + ";\n")
             text_file.write("  for each " + cname + "_inst" + " in " + cname + "_insts\n")
@@ -911,7 +913,7 @@ class MaslOut:
 
             text_file.write("  classname = "'"' +  cname + '"'";\n")
             text_file.write("  T::include(file:"'"' + "class.java" + '"'");\n")
-            text_file.write("end if;\n\n")
+            #text_file.write("end if;\n\n")
         text_file.write("population = T::body();\n")
         text_file.write("T::include(file:"'"' + "population.java" + '"'");\n")
         text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n\n")
