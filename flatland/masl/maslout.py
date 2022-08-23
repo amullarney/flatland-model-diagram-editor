@@ -344,7 +344,19 @@ class MaslOut:
         else:
             print("cannot find exclusions file")
         print("")
-        
+
+        # read a file of type names which must be treated as strings
+        # one line for each: format: typename
+        stringtypes = []   
+        if exists("stringtypes.txt"):
+            stringtypes = Path("stringtypes.txt").read_text().splitlines()
+            print("String type entries:")
+            for x in stringtypes:
+                print(x)
+        else:
+            print("cannot find stringtypes file")
+        print("")
+
         domain = self.subsys.name['subsys_name']
         print("Generating MASL domain definitions for " + domain)
         path = domain.replace(" ","") +".out"
@@ -844,31 +856,37 @@ class MaslOut:
             text_file.write("select many " + cname + "_insts" + " from instances of " + cname + ";\n")
             text_file.write("lblnum = 1;\n")
             text_file.write("for each " + cname + "_inst" + " in " + cname + "_insts\n")
-            text_file.write("  instance_label = " + cname + "_inst.instance_label;\n")
-            text_file.write("  if instance_label == " + '"' + '"' + ";\n")
+            text_file.write("  lbl = " + cname + "_inst.instance_label;\n")
+            text_file.write("  if lbl == " + '"' + '"' + ";\n")
             text_file.write("    genlabel = " + '"' +  cname + '"' + " + " + "\"_\"" + " + STR::itoa(i:lblnum);\n")
             text_file.write("    " + cname + "_inst.instance_label = genlabel;\n")
             text_file.write("    lblnum = lblnum + 1;\n")
             text_file.write("  else\n")
-            text_file.write("    lbl = " + cname + "_inst.instance_label;\n")
             text_file.write("    " + cname + "_inst.instance_label = STRING::replaceall(s:lbl, pattern:" + '"' + "-" + '"' + ", replacement:" + '"' + "_" + '"' + ");\n")
             text_file.write("  end if;\n") 
-            text_file.write("end for;\n")
+            text_file.write("end for;\n\n")
 
 
         for c in model_class_list:
            
             cname = c.keyletter
             text_file.write("// Output instances of " + cname + "\n")
-            text_file.write("select many " + cname + "_insts" + " from instances of " + cname + ";\n")
-            #text_file.write("if not_empty " + cname + "_insts\n")
+            text_file.write("  select many " + cname + "_insts" + " from instances of " + cname + ";\n")
             text_file.write("  T::push_buffer();\n")
             text_file.write("  instances = " + '"' + '"' + ";\n")
             text_file.write("  for each " + cname + "_inst" + " in " + cname + "_insts\n")
             for attr in c.attrlist:
-                if not attr.references:
-                    text_file.write("    attrname = " + '"' + attr.name + '"' + ";\n")
-                    text_file.write("    attrvalue = " + cname + "_inst." + attr.name + ";\n")
+                text_file.write("    attrname = " + '"' + attr.name + '"' + ";\n")
+                text_file.write("    attrvalue = " + cname + "_inst." + attr.name + ";\n")
+                match = False
+                for x in stringtypes:
+                    if attr.type == x:
+                        print("string attribute found: " + attrname)
+                        match = True
+                        break
+                if match:
+                    text_file.write("    T::include(file:"'"' + "attrquote.java" + '"'");\n")
+                else:
                     text_file.write("    T::include(file:"'"' + "attribute.java" + '"'");\n")
             text_file.write("    attributes = T::body();\n")
             for formr in c.formalizations:
@@ -898,7 +916,12 @@ class MaslOut:
                         text_file.write("    forward = " + rel.tclass.keyletter + ".instance_label;\n")
                         text_file.write("    select one " + rel.pclass.keyletter + " related by " + cname + "_inst->" + rel.pclass.keyletter + "[" + rel.rnum + pphrase + "];\n")
                         text_file.write("    backward = " + rel.pclass.keyletter + ".instance_label;\n")
-                        text_file.write("    T::include(file:"'"' + "assocassoc.java" + '"'");\n")
+                        if rel.is_reflexive:
+                            text_file.write("    T::include(file:"'"' + "assocreflx.java" + '"'");\n")
+                        else:
+                            text_file.write("    from = "'"' + rel.tclass.keyletter + '"'";\n")
+                            text_file.write("    to = "'"' + rel.pclass.keyletter + '"'";\n")
+                            text_file.write("    T::include(file:"'"' + "assocassoc.java" + '"'");\n")
                 else:
                     text_file.write("    select one " + rel.superclass.keyletter + " related by " + cname + "_inst->" + rel.superclass.keyletter + "[" + rel.rnum + "];\n")
                     text_file.write("    targetname = " + rel.superclass.keyletter + ".instance_label;\n")
@@ -912,16 +935,20 @@ class MaslOut:
             text_file.write("  T::pop_buffer();\n")
 
             text_file.write("  classname = "'"' +  cname + '"'";\n")
-            text_file.write("  T::include(file:"'"' + "class.java" + '"'");\n")
-            #text_file.write("end if;\n\n")
+            text_file.write("  emptyallocate = false;\n")
+            text_file.write("  if empty " + cname + "_insts\n")
+            text_file.write("    emptyallocate = true;\n")
+            text_file.write("  end if;\n")
+            text_file.write("  T::include(file:"'"' + "class.java" + '"'");\n\n")
         text_file.write("population = T::body();\n")
+        text_file.write("domain = "'"' +  domain + '"'";\n")
         text_file.write("T::include(file:"'"' + "population.java" + '"'");\n")
-        text_file.write("T::emit(file:"'"' + "Population.txt" + '"'");\n\n")
+        text_file.write("T::emit(file:"'"' + "Population_" + domain + ".micca" + '"'");\n\n")
 
                     
         # output domain definitions in Micca format
                     
-        path = domain.replace(" ","") +".txt"
+        path = domain.replace(" ","") +".micca"
         text_file = open(path, "w")
         text_file.write("domain " + domain + " {\n")
         
@@ -936,7 +963,7 @@ class MaslOut:
         backslash = "\\"
         for subsup in subsup_rel_list:
             superclass = subsup.superclass
-            text_file.write("\ngeneralization " + subsup.rnum + " -union " + superclass.keyletter + backslash + "\n")
+            text_file.write("\ngeneralization " + subsup.rnum + " " + superclass.keyletter + backslash + "\n")
             for sub in subsup.subclasslist:
                 text_file.write("    " + sub.keyletter + backslash + "\n")
 
