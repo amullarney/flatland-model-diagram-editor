@@ -141,7 +141,7 @@ class formalization:
     # second attempt: look for a single unmatched referential; 
     # if found, look for a single unmatched identifying attribute to be considered a match.
     
-    def resolve2(self, refclass, phrase, identnum):                            
+    def resolve2(self, refclass, phrase, identnum, reflexassoc):                            
         ident = refclass.identifiers[0]
         if not identnum == "":
             for ident in refclass.identifiers:
@@ -163,16 +163,18 @@ class formalization:
                             found = True
                             break
                 if not found:
-                    print("found unmatched ident: " + iattr.name)
+                    print("found unmatched ident: " + iattr.name + " in class " + refclass.classname)
                     uiattr = iattr
                     n = n + 1
             if n == 1:
                 for urattr in unresolveds:
-                    print(self.relnum + ": matching unmatched " + urattr.name + " to " + uiattr.name + " in " + refclass.classname)
+                    print(self.relnum + ": resolve2 matching unmatched " + urattr.name + " to " + uiattr.name + " in " + refclass.classname)
                     urattr.resolutions.append(resolution(refclass, uiattr, self.relnum, phrase, "SingleIdent"))
                     if uiattr.type != "undefinedType":
                         urattr.type = uiattr.type
                         urattr.synthtype = True
+                    if not reflexassoc:  # only if reflexive associative, can 2 referentials match a single identifying attribute
+                        break
                 
         
 # an [ attribute name - match pass/fail ] pair
@@ -312,16 +314,16 @@ subsup_rel_list = []
 
 class MaslOut:
 
-    def __init__(self, xuml_model_path: Path, masl_file_path: Path):
+    def __init__(self, xuml_model_path: Path, domain, out_file_path: Path):
         """Constructor"""
         self.logger = logging.getLogger(__name__)
         self.xuml_model_path = xuml_model_path
-        self.masl_file_path = masl_file_path
+        self.out_file_path = out_file_path
         
         # Create a Parser which accepts just an attribute description line        
         att_parser = attr_parser("attr_grammar.peg", "attrdef" )
 
-        self.logger.info("Parsing the model for MASL output")
+        self.logger.info("Parsing the model for micca output")
         # Parse the model
         try:
             self.model = ModelParser(model_file_path=self.xuml_model_path, debug=False)
@@ -357,10 +359,10 @@ class MaslOut:
             print("cannot find stringtypes file")
         print("")
 
-        domain = self.subsys.name['subsys_name']
-        print("Generating MASL domain definitions for " + domain)
-        path = domain.replace(" ","") +".out"
-        text_file = open(path, "w")
+        print("Generating micca domain definitions for " + domain)
+        maslfile = domain.replace(" ","") +".masl"
+        #path = out_file_path.joinpath(maslfile) # abandoning 'Path' file usage, for now...
+        text_file = open(maslfile, "w")
         text_file.write("domain " + domain + " is\n")
 
         for aclass in self.subsys.classes:
@@ -692,14 +694,14 @@ class MaslOut:
                             formalization.resolve(formr, r.tclass, r.tphrase, r.tclassident)
                             formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
                             # after both sides have had a chance to resolve, look for any unmatched.
-                            formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident)
-                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)
+                            formalization.resolve2(formr, r.tclass, r.tphrase, r.tclassident, False)
+                            formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident, False)
                         else:
                             # reflexive: all referentials resolve against the single class involved
                             # two cases: heuristic match uncertain; referential to both sides.
                             formalization.resolve(formr, r.tclass, "FIX THIS!!", r.tclassident)
                             # after both sides have had a chance to resolve, look for any unmatched.
-                            formalization.resolve2(formr, r.tclass, "FIX THIS!!", r.tclassident)
+                            formalization.resolve2(formr, r.tclass, "FIX THIS!!", r.tclassident, True)
                             for rattr in formr.formalizers:
                                 fixes = []
                                 for res in rattr.resolutions:
@@ -713,10 +715,10 @@ class MaslOut:
                                     rattr.fixup = True
                     else:
                         formalization.resolve(formr, r.pclass, r.pphrase, r.pclassident)
-                        formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident)  # 2nd chance
+                        formalization.resolve2(formr, r.pclass, r.pphrase, r.pclassident, False)  # 2nd chance
                 if formr.reltype == 2:
                       formalization.resolve(formr, r.superclass, "", r.classident)
-                      formalization.resolve2(formr, r.superclass, "", r.classident)  # 2nd chance
+                      formalization.resolve2(formr, r.superclass, "", r.classident, False)  # 2nd chance
         
 
 
@@ -818,7 +820,7 @@ class MaslOut:
         
         # report unresolved referentials and synthesized types
 
-        print("\nThe following referential attributes were unmatched in a referred-to class:  [search for FIX THIS !!!]")
+        print("\nThe following referential attributes were unmatched/not fully matched in a referred-to class:  [search for FIX THIS !!!]")
         for c in model_class_list:
             for formr in c.formalizations:
                 for attr in formr.formalizers:
@@ -831,14 +833,15 @@ class MaslOut:
                     for res in attr.resolutions:
                         if res.rnum == formr.relnum and res.category == "ID":
                             print(res.rnum + ": " + c.classname + "." + attr.name + "  ID matched to  " + res.rclass.classname + "." + res.rattr.name)
-        print("\nThe following referentials matched a single referred-to identifying attribute (likely safe):")
+        print("\nThe following referentials matched a single referred-to identifying attribute (likely safe, but check associative classes):")
         for c in model_class_list:
             for formr in c.formalizations:
                 for attr in formr.formalizers:
                     for res in attr.resolutions:
                         if res.rnum == formr.relnum and res.category == "SingleIdent":
                             print(res.rnum + ": " + c.classname + "." + attr.name + "  singly matched to  " + res.rclass.classname + "." + res.rattr.name)
-        print("\nThe following attributes have been heuristically typed: - not used.. all types are string")
+
+        print("\nThe following attributes have been heuristically typed:")
         for c in model_class_list:
              for attr in c.attrlist:
                  if attr.synthtype:
@@ -881,7 +884,6 @@ class MaslOut:
                 match = False
                 for x in stringtypes:
                     if attr.type == x:
-                        print("string attribute found: " + attrname)
                         match = True
                         break
                 if match:
@@ -943,7 +945,7 @@ class MaslOut:
         text_file.write("population = T::body();\n")
         text_file.write("domain = "'"' +  domain + '"'";\n")
         text_file.write("T::include(file:"'"' + "population.java" + '"'");\n")
-        text_file.write("T::emit(file:"'"' + "Population_" + domain + ".micca" + '"'");\n\n")
+        text_file.write("T::emit(file:"'"' + "population.micca" + '"'");\n\n")
 
                     
         # output domain definitions in Micca format
