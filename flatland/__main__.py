@@ -58,10 +58,8 @@ def parse(cl_input):
                         help='Rebuild the flatland database. Necessary only if corrupted.')
     parser.add_argument('-COLORS', '--colors', action='store_true',
                         help='Show the list of background color names')
-    parser.add_argument('-micca', '--micca', action='store', default='domain',
-                        help='Create files needed for micca realization')
-    parser.add_argument('-x', '--translate', action='store', default="",
-                        help='folder for micca translation artifacts')
+    parser.add_argument('-M', '--Micca', action='store', default='domain',
+                        help='Create files needed for Micca realization')
     return parser.parse_args(cl_input)
 
 
@@ -128,7 +126,7 @@ def main():
             logger.info("Copying doc directory to users local directory")
             shutil.copytree(docs_path, local_docs_path)
 
-    if args.model and not args.layout and not args.micca:
+    if args.model and not args.layout and not args.Micca:
         logger.error("A layout file must be specified for your model.")
         sys.exit(1)
 
@@ -170,14 +168,12 @@ def main():
                 no_color=args.no_color,
             )
 
-    if args.model and args.micca:
+    if args.model and args.Micca:
         model_path = Path(args.model)
-        micca_domain = args.micca
-        outf_path = Path(args.translate)
+        micca_domain = args.Micca
         success = MaslOut(
             xuml_model_path=model_path,
             domain=micca_domain,
-            out_file_path=outf_path,
         )
 
     logger.info("No problemo")  # We didn't die on an exception, basically

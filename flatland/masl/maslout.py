@@ -314,11 +314,10 @@ subsup_rel_list = []
 
 class MaslOut:
 
-    def __init__(self, xuml_model_path: Path, domain, out_file_path: Path):
+    def __init__(self, xuml_model_path: Path, domain):
         """Constructor"""
         self.logger = logging.getLogger(__name__)
         self.xuml_model_path = xuml_model_path
-        self.out_file_path = out_file_path
         
         # Create a Parser which accepts just an attribute description line        
         att_parser = attr_parser("attr_grammar.peg", "attrdef" )
@@ -361,7 +360,6 @@ class MaslOut:
 
         print("Generating micca domain definitions for " + domain)
         maslfile = domain.replace(" ","") +".masl"
-        #path = out_file_path.joinpath(maslfile) # abandoning 'Path' file usage, for now...
         text_file = open(maslfile, "w")
         text_file.write("domain " + domain + " is\n")
 
