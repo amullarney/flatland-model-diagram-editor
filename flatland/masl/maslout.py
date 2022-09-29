@@ -358,7 +358,6 @@ class MaslOut:
             print("cannot find stringtypes file")
         print("")
 
-        domain = self.subsys.name['subsys_name']
         print("Generating micca domain definitions for " + domain)
         maslfile = domain.replace(" ","") +".masl"
         text_file = open(maslfile, "w")
